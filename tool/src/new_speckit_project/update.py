@@ -184,12 +184,15 @@ def write_blob(scaffold: Path, project: Path, path: str, mode: str, blob: str) -
         cli.remove_tree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if mode == "120000":
-        link = git(["cat-file", "-p", blob], scaffold)
+        # Git はリンク先を / 区切りで記録する。Windows のディレクトリへのリンクは / 区切りだとたどれないので、OS の区切りに直す
+        link = git(["cat-file", "-p", blob], scaffold).strip().replace("/", os.sep)
         try:
             os.symlink(link, target, target_is_directory=True)
+            if not target.exists():  # 作れてもたどれないリンクは使わない
+                target.unlink()
+                raise OSError(f"{target} のリンク先をたどれない")
         except (OSError, NotImplementedError):
-            source = (target.parent / link).resolve()
-            shutil.copytree(source, target)
+            shutil.copytree((target.parent / link).resolve(), target)
     else:
         shutil.copy2(scaffold / path, target)
 
