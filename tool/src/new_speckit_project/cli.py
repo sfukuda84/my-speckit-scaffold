@@ -29,8 +29,9 @@ DEFAULT_REPO = "https://github.com/sfukuda84/my-speckit-scaffold.git"
 DEFAULT_REF = "main"
 SKILL_DIRS = (".claude/skills", ".agents/skills", ".kiro/skills")
 SHARED_SKILLS = "skills/speckit"
-# 新規プロジェクトに持ち込まない scaffold 側のファイル（scaffold 自体の開発用）
-EXCLUDED_PATHS = ("tool", ".github/workflows/scaffold-tests.yml")
+# 新規プロジェクトに持ち込まない scaffold 側のファイル（scaffold 自体の開発用と、scaffold 自体のライセンス）。
+# プロジェクトのライセンスは利用者が決める。scaffold と Spec Kit の著作権表示は THIRD_PARTY_NOTICES.md で持ち込む。
+EXCLUDED_PATHS = ("tool", ".github/workflows/scaffold-tests.yml", "LICENSE")
 SCAFFOLD_README = "docs/speckit-scaffold.md"
 CONCEPT_FILE = "docs/concept/core-concept.md"
 STATE_FILE = ".specify/scaffold.json"   # 元にした scaffold の版（new-speckit-project update が使う）

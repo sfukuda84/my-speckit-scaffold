@@ -32,7 +32,7 @@
 uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirectory=tool"
 ```
 
-このリポジトリは非公開なので、GitHub に認証できる状態（`gh auth login` と `gh auth setup-git` など）で実行する。更新は `uv tool upgrade new-speckit-project` で行う。
+更新は `uv tool upgrade new-speckit-project` で行う。
 
 ### 2. プロジェクトを作る
 
@@ -242,6 +242,12 @@ py -3 $H status
   エージェント向けの manifest（`.specify/integrations/*.manifest.json`）は、今のスキルの実体と対応しないため置いていない。
 
   Spec Kit を新しい版にするときは、別のディレクトリで `specify init --integration codex --script py` と `specify init --integration opencode --script py` を実行し、生成されたスキル、`.specify/scripts/python/`、`.opencode/commands/` を確かめてから取り込む。
+
+## ライセンス
+
+- この scaffold は [MIT License](LICENSE) で公開している。
+- [GitHub Spec Kit](https://github.com/github/spec-kit)（MIT License、Copyright GitHub, Inc.）から生成したファイルを含む（`.specify/`、Spec Kit の標準スキル、`.opencode/commands/`）。著作権表示と許諾文は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) にある。
+- `new-speckit-project` で作るプロジェクトには、`THIRD_PARTY_NOTICES.md` を持ち込み、`LICENSE` は持ち込まない。プロジェクト自体のライセンスは、作った人が決める。
 
 ## 注意点
 

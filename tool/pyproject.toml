@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "my-speckit-scaffold から新規プロジェクトを作成し、AI エージェントで立ち上げ（speckit-bootstrap）を始めるコマンド"
 readme = "README.md"
 requires-python = ">=3.9"
+license = { text = "MIT" }
 dependencies = []
 
 [project.scripts]

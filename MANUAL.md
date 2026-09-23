@@ -46,7 +46,6 @@ flowchart LR
 | Git | バージョン管理 | macOS: `xcode-select --install`、Windows: [Git for Windows](https://gitforwindows.org/) |
 | Python 3.9 以上 | スクリプトの実行 | macOS / Windows: [python.org](https://www.python.org/downloads/) など |
 | uv | コマンドの導入、企画書の生成 | [uv のインストール手順](https://docs.astral.sh/uv/getting-started/installation/) |
-| GitHub CLI（gh） | 非公開の scaffold を取得するための認証 | [cli.github.com](https://cli.github.com/) |
 | AI エージェントの CLI | 対話で作業を進める | Claude Code、Codex CLI、Antigravity、Kiro CLI、opencode のいずれか 1 つ以上 |
 
 Git には名前とメールアドレスを設定しておく。
@@ -54,15 +53,6 @@ Git には名前とメールアドレスを設定しておく。
 ```bash
 git config --global user.name "あなたの名前"
 git config --global user.email "あなたのメールアドレス"
-```
-
-### GitHub への認証（初回だけ）
-
-scaffold のリポジトリは非公開なので、GitHub に認証しておく。
-
-```bash
-gh auth login
-gh auth setup-git
 ```
 
 ### コマンドを入れる（初回だけ）
@@ -361,6 +351,7 @@ uv run .claude/skills/speckit-presentation/scripts/build_pptx.py docs/presentati
 
 ### 読み手を増やす
 
+
 `/speckit-presentation investor` のように別の読み手で実行すると、`docs/presentation/investor/` に別の版ができる。`design.yaml` は共通で使われる。
 
 ## 8. エージェントごとの呼び出し方
@@ -422,7 +413,7 @@ new-speckit-project update                   # 取り込んで、1 つのコミ�
 
 | 症状 | 原因と対処 |
 |---|---|
-| `new-speckit-project` で clone に失敗する | GitHub に認証できていない。`gh auth login` と `gh auth setup-git` を実行する |
+| `new-speckit-project` で clone に失敗する | ネットワークに接続できるか、`--ref` に指定したブランチやタグがあるかを確かめる |
 | `git の user.name と user.email が設定されていません` | §2 の `git config --global` を実行する |
 | `speckit-coding` が `SPEC_MISSING` で止まる | 仕様がまだない。先に `speckit-feature` か `speckit-all` を使う |
 | `speckit-feature` が `CODING_IN_PROGRESS` で止まる | その機能は実装の途中まで進んでいる。`speckit-coding` か `speckit-all` で再開する |

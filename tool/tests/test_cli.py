@@ -89,6 +89,9 @@ class NewProjectTest(unittest.TestCase):
         code, target = self.create("excl", "-m", "テスト")
         self.assertEqual(code, 0)
         self.assertFalse((target / ".github" / "workflows" / "scaffold-tests.yml").exists())
+        # scaffold 自体のライセンスは持ち込まず、著作権表示は持ち込む
+        self.assertFalse((target / "LICENSE").exists())
+        self.assertIn("Copyright GitHub, Inc.", (target / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8"))
         moved = (target / "docs" / "speckit-scaffold.md").read_text(encoding="utf-8")
         self.assertTrue(moved.startswith("> この文書は、プロジェクトの作成または更新に使った scaffold"))
 

@@ -33,7 +33,7 @@ MANAGED_PREFIXES = (
     ".kiro/steering/",
 )
 MANAGED_FILES = (
-    "CLAUDE.md", "AGENTS.md", "GEMINI.md", "opencode.json", "MANUAL.md",
+    "CLAUDE.md", "AGENTS.md", "GEMINI.md", "opencode.json", "MANUAL.md", "THIRD_PARTY_NOTICES.md",
     ".specify/init-options.json", ".specify/integration.json", ".specify/.gitignore",
 )
 NEW_VERSIONS_DIR = ".scaffold-new"
