@@ -32,6 +32,14 @@ concept 側の記述と食い違う場合は、ここの回答が新しい決定
 
 - <例: 認証方式（Email + Password / Magic Link / Google OAuth / Passkey）— architecture.md §4、platform-core packages/auth>
 
+## 共通基盤の候補（000-app-basic に渡すもの）
+
+コアドメイン以外の共通機能で、機能にしなかったもの。`speckit-common-feature` が `docs/feature/000-app-basic.md` にまとめる。
+
+| 候補 | 必要とする機能 | 根拠 |
+|---|---|---|
+| <例: メールアドレスとパスワードによるログイン> | <NNN-slug, NNN-slug> | <P2 / Q3> |
+
 ## 質疑記録
 
 実行ごとに `###` の小見出しでまとめ、各質問は `####` で書く。Q-ID は実行をまたいで通し番号にする。

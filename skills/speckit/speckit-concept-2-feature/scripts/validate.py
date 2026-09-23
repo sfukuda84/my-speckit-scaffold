@@ -9,6 +9,8 @@
 
 終了コード: エラーが 1 件以上なら 1、なければ 0（警告は終了コードに影響しない）。
 """
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path
@@ -23,13 +25,18 @@ REQUIRED_SECTIONS = [
     "## 根拠",
     "## /speckit-specify に渡す記述案",
 ]
-STATUS_RE = re.compile(r"^(未着手|spec化済み（specs/[^）]+）|完了)$")
+STATUS_RE = re.compile(r"^(未着手|実装済み（spec なし）|一部実装（spec なし）|spec化済み（specs/[^）]+）|完了)$")
+IMPLEMENTED_STATUSES = ("実装済み（spec なし）", "一部実装（spec なし）")
 CATEGORIES = ("MVP", "拡張")
 NONE_DEPS = {"—", "-", "なし", ""}
 # ファイル名は NNN-<slug>（例: 001-clinic-setup）。specs/ とブランチ名にそのまま対応する
 NAME_RE = re.compile(r"^(\d{3})-[a-z0-9]+(-[a-z0-9]+)*$")
+# 予約番号: 000 は共通基盤（speckit-common-feature）、999 は運用基盤・非機能要件（speckit-nfr-feature）
+BASIC_ORDER = 0
+NFR_ORDER = 999
+RESERVED_ORDERS = (BASIC_ORDER, NFR_ORDER)
 BACKLOG_STATUS_RE = re.compile(r"^(候補|却下|機能化済み（docs/feature/(\d{3}-[a-z0-9-]+)\.md）)$")
-# speckit-worktree の worktree-helper.sh が読む行形式: - **1. [名前](./slug.md)**
+# speckit-worktree の worktree_helper.py が読む行形式: - **1. [名前](./slug.md)**
 ORDER_LINE_RE = re.compile(r"\*\*\s*(\d+)\.\s*\[([^\]]*)\]\(\./([^.)]+)\.md\)")
 README_ROW_RE = re.compile(r"^\|\s*(\d+)\s*\|\s*\[([^\]]*)\]\(\./([^.)]+)\.md\)\s*\|(.*)\|\s*$")
 # 「広く浅く」に反しがちな記述（警告のみ）
@@ -75,7 +82,7 @@ def parse_header(path: Path, text: str) -> dict | None:
     if any(k not in fields for k in ("状態", "区分", "想定順序", "依存")):
         return None
     if not STATUS_RE.match(fields["状態"]):
-        err(f"{path.name}: 状態「{fields['状態']}」は 未着手 / spec化済み（specs/…） / 完了 のいずれかにする")
+        err(f"{path.name}: 状態「{fields['状態']}」は 未着手 / 実装済み（spec なし） / 一部実装（spec なし） / spec化済み（specs/…） / 完了 のいずれかにする")
     if fields["区分"] not in CATEGORIES:
         err(f"{path.name}: 区分「{fields['区分']}」は MVP / 拡張 のいずれかにする")
     if not fields["想定順序"].isdigit():
@@ -118,6 +125,11 @@ def load_features(feature_dir: Path) -> dict[str, dict]:
         for sec in REQUIRED_SECTIONS:
             if sec not in text.splitlines():
                 err(f"{path.name}: 見出し「{sec}」がない")
+        if header and header["状態"] in IMPLEMENTED_STATUSES:
+            if not section_body(text, "## 現状の実装"):
+                err(f"{path.name}: 状態が「{header['状態']}」なのに「## 現状の実装」節がないか空")
+        elif "## 現状の実装" in text.splitlines():
+            warn(f"{path.name}: 状態が「{header['状態'] if header else '?'}」なのに「## 現状の実装」節がある（既存実装がなければ削除する）")
         basis = section_body(text, "## 根拠")
         if basis and not re.search(r"concept/|premises\.md|competitor\.md|\bP\d+\b|\bQ\d+\b", basis):
             warn(f"{path.name}: 根拠節に concept / premises（P-ID・Q-ID）への参照がない")
@@ -178,8 +190,43 @@ def check_graph(features: dict[str, dict]) -> None:
     dup = sorted({o for o in orders if orders.count(o) > 1})
     if dup:
         err(f"想定順序が重複している: {dup}")
-    if orders and sorted(orders) != list(range(1, len(orders) + 1)):
-        warn(f"想定順序が 1 からの連番になっていない: {sorted(orders)}（再実行で機能を削除した場合は想定どおり）")
+    core_orders = sorted(o for o in orders if o not in RESERVED_ORDERS)
+    if core_orders and core_orders != list(range(1, len(core_orders) + 1)):
+        warn(f"想定順序が 1 からの連番になっていない: {core_orders}（再実行で機能を削除した場合は想定どおり）")
+    check_reserved(features)
+
+
+def depends_on(features: dict[str, dict], slug: str, target: str) -> bool:
+    """slug が target に（間接的にでも）依存しているか。"""
+    seen: set[str] = set()
+    stack = list(features[slug]["deps"])
+    while stack:
+        d = stack.pop()
+        if d == target:
+            return True
+        if d in seen or d not in features:
+            continue
+        seen.add(d)
+        stack.extend(features[d]["deps"])
+    return False
+
+
+def check_reserved(features: dict[str, dict]) -> None:
+    """予約番号 000（共通基盤）と 999（運用基盤・非機能要件）の規則。"""
+    basic = [s for s, f in features.items() if f["order"] == BASIC_ORDER]
+    nfr = [s for s, f in features.items() if f["order"] == NFR_ORDER]
+    for slug in basic:
+        if features[slug]["category"] != "MVP":
+            err(f"{slug}.md: 共通基盤（000）の区分は MVP にする")
+        if features[slug]["deps"]:
+            err(f"{slug}.md: 共通基盤（000）はほかの機能に依存できない")
+        for other, f in features.items():
+            if other != slug and f["order"] != BASIC_ORDER and not depends_on(features, other, slug):
+                warn(f"{other}.md: 共通基盤 {slug} に（間接的にも）依存していない。認証などを前提にするなら依存に加える")
+    for slug in nfr:
+        for other, f in features.items():
+            if slug in f["deps"]:
+                warn(f"{other}.md: 運用基盤 {slug} に依存している。999 はほかの機能から依存されない前提")
 
 
 def check_readme(feature_dir: Path, features: dict[str, dict]) -> None:
@@ -260,6 +307,9 @@ def check_spec_order(feature_dir: Path, features: dict[str, dict]) -> None:
         for d in f["deps"]:
             if d in idx and idx[d] > idx[slug]:
                 err(f"spec_order.md: {slug} が依存先 {d} より前に並んでいる")
+    for slug, f in features.items():
+        if f["order"] == BASIC_ORDER and slug in idx and idx[slug] != 0:
+            err(f"spec_order.md: 共通基盤 {slug} は先頭に並べる")
     mvp_pos = [idx[s] for s, f in features.items() if s in idx and f["category"] == "MVP"]
     ext_pos = [idx[s] for s, f in features.items() if s in idx and f["category"] == "拡張"]
     if mvp_pos and ext_pos and max(mvp_pos) > min(ext_pos):

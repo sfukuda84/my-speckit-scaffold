@@ -13,6 +13,7 @@ inclusion: always
 3. **仕様は「何を・なぜ」、計画は「どう作るか」**: `spec.md` には技術スタックや実装詳細を書かず、ユーザー価値と要件に集中する。技術的な選択は `plan.md` に書く。
 4. **曖昧さは推測で埋めない**: 不明点は `[NEEDS CLARIFICATION: ...]` として明示し、`/speckit-clarify` やユーザーへの確認で解消する。
 5. **成果物と実装を同期させる**: 実装中に仕様の誤りや不足が見つかったら、コードだけを直さず `spec.md` / `plan.md` / `tasks.md` にも反映する。
+6. **アーキテクチャと非機能要件に従う**: 各機能の `plan.md` は `docs/architecture.md`（構成と技術スタック）と `docs/nfr.md`（全機能が守る非機能要件）に従う。これらと違う技術や目標が必要になった場合は、`plan.md` で独自に決めず、`speckit-architecture` や `speckit-nfr-feature` の更新モードで先に見直す。
 
 ## 標準ワークフロー
 
@@ -45,8 +46,14 @@ inclusion: always
 
 ### 追加スキル
 
+新規プロジェクトの立ち上げでは、`speckit-bootstrap` が次の順にスキルを実行する: `speckit-concept-2-feature` → `speckit-architecture` → `speckit-constitution` → `speckit-common-feature` → `speckit-nfr-feature` → 検証。
+
 | スキル | 目的 |
 |---|---|
+| `speckit-bootstrap` | 新規プロジェクトの立ち上げ（上の順）を通しで行う。ステップごとにコミットし、中断しても続きから再開できる |
+| `speckit-architecture` | 機能一覧を実現するアーキテクチャと技術スタックを、SaaS/PaaS・クラウド・VPS の 3 系統の比較から選び、`docs/architecture.md` に書く |
+| `speckit-common-feature` | 認証やメール送信など、コアドメイン以外の共通機能を `docs/feature/000-app-basic.md` に定義する |
+| `speckit-nfr-feature` | 全機能が守る非機能要件を `docs/nfr.md` に、監視・バックアップ・CI/CD などの運用基盤を `docs/feature/999-app-nfr.md` に定義する |
 | `speckit-concept-2-feature` | `docs/concept/` のコアコンセプトを、`speckit-specify` に渡せる単位の機能概要（`docs/feature/`）と着手順序（`spec_order.md`）に仕分ける |
 | `speckit-feature` | 仕様工程。worktree で specify・clarify ×2・plan・tasks・analyze ×3 を行い、`main` にマージする |
 | `speckit-coding` | 実装工程。worktree で implement・converge・レビュー ×2 を行い、`main` にマージする |
@@ -63,6 +70,7 @@ inclusion: always
 - `tasks.md` の完了したタスクは `- [x]` に更新し、進捗と実態を一致させる。
 - 1 つの手順が終わったら結果を要約し、次に実行すべきコマンドを提示する。
 - 誤字修正、依存関係の更新、設定の微調整など、振る舞いを変えない軽微な変更は仕様化を省略してよい。判断に迷ったらユーザーに確認する。
+- Spec Kit とスキルのスクリプトは Python（3.9 以上）で書かれており、`python3 <スクリプト>` の形で呼ぶ。`python3` というコマンドがない環境（Windows など）では、`python` または `py -3` に読み替えて実行する。
 
 ## ディレクトリ構成
 
@@ -70,7 +78,7 @@ inclusion: always
 .specify/
 ├── memory/constitution.md   # プロジェクト憲章（最上位の規範）
 ├── templates/               # spec / plan / tasks などのテンプレート
-├── scripts/bash/            # Spec Kit のヘルパースクリプト
+├── scripts/python/          # Spec Kit のヘルパースクリプト（Python）
 └── workflows/               # Spec Kit のワークフロー定義
 specs/
 └── <NNN-feature-name>/      # フィーチャーごとの成果物
@@ -82,6 +90,11 @@ specs/
     ├── contracts/
     ├── checklists/
     └── tasks.md
+docs/
+├── concept/                 # コアコンセプト（入力）と backlog.md
+├── feature/                 # 機能概要（000 は共通基盤、999 は運用基盤）と spec_order.md
+├── architecture.md          # 構成と技術スタック（speckit-architecture）
+└── nfr.md                   # 全機能が守る非機能要件（speckit-nfr-feature）
 .kiro/steering/              # エージェント共通ルールの正本（このディレクトリ）
 ```
 

@@ -1,0 +1,35 @@
+# new-speckit-project
+
+[my-speckit-scaffold](https://github.com/sfukuda84/my-speckit-scaffold) から新規プロジェクトを作成し、AI エージェントで立ち上げ（`speckit-bootstrap`）を始めるコマンド。macOS、Linux、Windows で動く（Python 3.9 以上）。
+
+## 導入
+
+```bash
+uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirectory=tool"
+```
+
+更新は `uv tool upgrade new-speckit-project` で行う。
+
+## 使い方
+
+```bash
+new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <ファイル>] [--agent claude|codex|agy|kiro|opencode]
+```
+
+| オプション | 内容 |
+|---|---|
+| `-m`, `--message` | サービスのコアコンセプト。省略すると対話で入力を受ける |
+| `--concept-file` | コアコンセプトを書いたファイル（UTF-8） |
+| `--agent` | 立ち上げに使うエージェント（既定: `claude`） |
+| `--ref` | scaffold のブランチまたはタグ（既定: `main`。環境変数 `SPECKIT_SCAFFOLD_REF` でも指定できる） |
+| `--repo` | scaffold の Git リポジトリ（環境変数 `SPECKIT_SCAFFOLD_REPO` でも指定できる） |
+| `--no-launch` | エージェントを起動せず、手順の案内だけを表示する |
+
+## 開発
+
+```bash
+cd tool
+python3 -m unittest discover -s tests
+```
+
+テストは、作業ツリーの scaffold を一時的な Git リポジトリにして、そこから作成を試す。worktree 管理のスクリプトと `validate.py` のテストも含む。

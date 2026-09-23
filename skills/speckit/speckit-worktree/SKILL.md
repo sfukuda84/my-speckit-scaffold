@@ -2,7 +2,7 @@
 name: "speckit-worktree"
 description: "speckit-feature・speckit-coding・speckit-all が共通で使う worktree 管理スキル。フィーチャーごとの Git worktree とブランチの準備（既存があれば再利用）、ステップ完了ごとの進捗コミット、main への --no-ff マージと片付け、中止、進捗の確認を行う。3 スキル共通の実行規則（ステップ番号、再開、安全規則、対話、引数の解釈）もここに定める。「フィーチャーの進捗を見せて」「worktree を破棄して」と言われたとき、または /speckit-worktree と打たれたときにも使う。"
 argument-hint: "status | next --phase spec|coding|all | abort <フィーチャー>"
-compatibility: "Requires git and bash, spec-kit project structure with .specify/ directory"
+compatibility: "Requires git and Python 3.9+, spec-kit project structure with .specify/ directory"
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -16,10 +16,14 @@ Claude Code、Codex CLI、Antigravity、Kiro CLI、opencode のいずれでも�
 ## 1. ヘルパースクリプト
 
 ```bash
-HELPER=<skills>/speckit-worktree/scripts/worktree-helper.sh
+python3 <skills>/speckit-worktree/scripts/worktree_helper.py <command> ...
 ```
 
-`<skills>` は、このスキルが置かれた skills ディレクトリ（`.claude/skills`、`.agents/skills`、`.kiro/skills` のいずれか）である。スクリプトはプロジェクトのルートからでも worktree の中からでも実行できる。
+以降、この呼び出しを `$HELPER` と書く。
+
+- `<skills>` は、このスキルが置かれた skills ディレクトリ（`.claude/skills`、`.agents/skills`、`.kiro/skills` のいずれか）である。
+- スクリプトは Python 3.9 以上の標準ライブラリだけで書かれており、macOS、Linux、Windows で動く。プロジェクトのルートからでも worktree の中からでも実行できる。
+- `python3` がない環境（Windows など）では、`python` または `py -3` に読み替える。
 
 | コマンド | 用途 |
 |---|---|
