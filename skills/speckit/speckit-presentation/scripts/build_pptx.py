@@ -378,12 +378,15 @@ class Renderer:
         return shape
 
     # --- 共通の枠 ---
-    def new_slide(self, dark: bool = False) -> None:
+    def new_slide(self, dark: bool = False) -> bool:
+        """スライドを足す。濃い背景を描いたかを返す（雛形を使うときは背景を描かず、雛形の背景を活かす）。"""
         self.slide = self.prs.slides.add_slide(self.layout)
         for ph in list(self.slide.placeholders):
             ph._element.getparent().remove(ph._element)
-        if not self.use_template:
-            self.rect(0, 0, self.W, self.H, "primary" if dark else "background")
+        if self.use_template:
+            return False
+        self.rect(0, 0, self.W, self.H, "primary" if dark else "background")
+        return dark
 
     def content_width(self):
         return self.W - self.left - self.right
@@ -433,29 +436,29 @@ class Renderer:
     def layout_title(self, s: Slide, page: int) -> None:
         from pptx.util import Inches
 
-        self.new_slide(dark=True)
+        dark = self.new_slide(dark=True)
         tf = self.text_box(self.left, Inches(2.0), self.content_width(), Inches(1.6), anchor="bottom")
-        self.write(tf, s.title, self.d["sizes"]["title"], "on_primary", bold=True)
+        self.write(tf, s.title, self.d["sizes"]["title"], "on_primary" if dark else "primary", bold=True)
         self.rect(self.left, Inches(3.75), Inches(1.6), Inches(0.08), "accent")
         tf = self.text_box(self.left, Inches(4.0), self.content_width(), Inches(1.4))
         for i, text in enumerate(s.paragraphs):
-            self.write(tf, text, self.d["sizes"]["body"] + 4, "on_primary", first=(i == 0))
+            self.write(tf, text, self.d["sizes"]["body"] + 4, "on_primary" if dark else "text", first=(i == 0))
         meta = " ｜ ".join(str(v) for v in (self.meta.get("date"), self.meta.get("author")) if v)
         if meta:
             tf = self.text_box(self.left, self.H - self.bottom - Inches(0.8), self.content_width(), Inches(0.5))
-            self.write(tf, meta, self.d["sizes"]["small"] + 3, "on_primary")
-        self.footer(s, page, dark=True)
+            self.write(tf, meta, self.d["sizes"]["small"] + 3, "on_primary" if dark else "muted")
+        self.footer(s, page, dark=dark)
 
     def layout_section(self, s: Slide, page: int) -> None:
         from pptx.util import Inches
 
-        self.new_slide(dark=True)
+        dark = self.new_slide(dark=True)
         tf = self.text_box(self.left, Inches(2.6), self.content_width(), Inches(1.4), anchor="middle")
-        self.write(tf, s.title, self.d["sizes"]["title"], "on_primary", bold=True)
+        self.write(tf, s.title, self.d["sizes"]["title"], "on_primary" if dark else "primary", bold=True)
         if s.paragraphs:
             tf = self.text_box(self.left, Inches(4.1), self.content_width(), Inches(1.0))
-            self.write(tf, s.paragraphs[0], self.d["sizes"]["body"], "on_primary")
-        self.footer(s, page, dark=True)
+            self.write(tf, s.paragraphs[0], self.d["sizes"]["body"], "on_primary" if dark else "text")
+        self.footer(s, page, dark=dark)
 
     def bullets_into(self, tf, bullets: list[Bullet], paragraphs: list[str], size: float) -> None:
         from pptx.util import Pt

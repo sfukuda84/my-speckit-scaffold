@@ -2,6 +2,8 @@
 
 [GitHub Spec Kit](https://github.com/github/spec-kit) による仕様駆動開発（Spec-Driven Development）を、複数の AI エージェントで同じ手順で進めるためのプロジェクト scaffold。
 
+> **使い方は [MANUAL.md](MANUAL.md)（利用マニュアル）にまとめている。** 最小の手順、事業計画と企画書の作り方、企画書のテンプレートの差し替え方法などは、そちらを見る。この README は、仕組みと scaffold の開発者向けの説明である。
+
 - 次の 5 つのエージェントで、同じ Spec Kit のスキルとルールを使う。
   - Claude Code
   - Codex CLI
@@ -48,6 +50,8 @@ new-speckit-project ~/work/my-app --agent codex        # 使うエージェン�
 4. 指定のエージェントを対話モードで起動し、`speckit-bootstrap` を始める。
 
 オプションの一覧は [tool/README.md](tool/README.md) を参照する。
+
+作成済みのプロジェクトに scaffold の新しい版を取り込むときは、プロジェクトの `main` で `new-speckit-project update` を実行する（手で直したファイルは上書きせず、新しい版を `.scaffold-new/` に置く。詳しくは [MANUAL.md](MANUAL.md) の §9）。
 
 ### 3. 立ち上げ（speckit-bootstrap）
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import os
 import shutil
 import stat
@@ -32,6 +33,7 @@ SHARED_SKILLS = "skills/speckit"
 EXCLUDED_PATHS = ("tool", ".github/workflows/scaffold-tests.yml")
 SCAFFOLD_README = "docs/speckit-scaffold.md"
 CONCEPT_FILE = "docs/concept/core-concept.md"
+STATE_FILE = ".specify/scaffold.json"   # 元にした scaffold の版（new-speckit-project update が使う）
 
 
 class CliError(Exception):
@@ -251,27 +253,42 @@ def ensure_skill_links(root: Path, symlink: Callable[..., None] = os.symlink) ->
 
 # --- C3: README、コンセプト、初回コミット -------------------------------------------
 
+def scaffold_doc_text(original: str, repo: str, ref: str, sha: str) -> str:
+    """scaffold の README の写し（docs/speckit-scaffold.md）の本文。"""
+    web = repo.removesuffix(".git")
+    # tool/ は持ち込まないので、tool/README.md への相対リンクは GitHub の URL に直す
+    if web.startswith("https://"):
+        original = original.replace("](tool/README.md)", f"]({web}/blob/{ref}/tool/README.md)")
+    return (f"> この文書は、プロジェクトの作成または更新に使った scaffold（{web}、{ref}、{sha[:7]}）の README の写しである。"
+            "scaffold 自体の開発に関する節（「scaffold の更新」など）は、このプロジェクトには当てはまらない。\n\n"
+            + original)
+
+
+def write_scaffold_doc(root: Path, original: str, repo: str, ref: str, sha: str) -> None:
+    doc = root / SCAFFOLD_README
+    doc.parent.mkdir(parents=True, exist_ok=True)
+    doc.write_text(scaffold_doc_text(original, repo, ref, sha), encoding="utf-8")
+
+
+def write_state(root: Path, repo: str, ref: str, sha: str) -> None:
+    state = root / STATE_FILE
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(json.dumps({"repo": repo, "ref": ref, "sha": sha}, ensure_ascii=False, indent=2) + "\n",
+                     encoding="utf-8")
+
+
 def write_project_files(root: Path, concept: str, repo: str, ref: str, sha: str) -> None:
     readme = root / "README.md"
     if readme.exists():
-        moved = root / SCAFFOLD_README
-        moved.parent.mkdir(parents=True, exist_ok=True)
-        original = readme.read_text(encoding="utf-8")
-        web = repo.removesuffix(".git")
-        # scaffold の README の写し。tool/ は持ち込まないので、tool/README.md への相対リンクは GitHub の URL に直す
-        if web.startswith("https://"):
-            original = original.replace("](tool/README.md)", f"]({web}/blob/{ref}/tool/README.md)")
-        moved.write_text(
-            f"> この文書は、プロジェクトの作成に使った scaffold（{web}、{ref}、{sha[:7]}）の README の写しである。"
-            "scaffold 自体の開発に関する節（「scaffold の更新」など）は、このプロジェクトには当てはまらない。\n\n"
-            + original, encoding="utf-8")
+        write_scaffold_doc(root, readme.read_text(encoding="utf-8"), repo, ref, sha)
         readme.unlink()
+    write_state(root, repo, ref, sha)
     name = root.name
     readme.write_text(
         f"# {name}\n\n"
         f"このプロジェクトは [my-speckit-scaffold]({repo.removesuffix('.git')})"
         f"（{ref}、{sha[:7]}）から作成した。\n"
-        "Spec Kit による仕様駆動開発の進め方は "
+        "使い方は [MANUAL.md](MANUAL.md)（利用マニュアル）、仕組みは "
         f"[{SCAFFOLD_README}]({SCAFFOLD_README}) を参照する。\n\n"
         "## 立ち上げ\n\n"
         "エージェントで `speckit-bootstrap` スキルを実行し、コアコンセプトから機能一覧、アーキテクチャ、憲章、"
@@ -321,7 +338,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="new-speckit-project",
         description="my-speckit-scaffold から新規プロジェクトを作成し、AI エージェントで立ち上げ（speckit-bootstrap）を始める。",
     )
-    parser.add_argument("target", help="作成するプロジェクトのディレクトリ（存在しないか、空であること）")
+    parser.add_argument("target", help="作成するプロジェクトのディレクトリ（存在しないか、空であること）。"
+                                       "作成済みのプロジェクトを更新するときは `new-speckit-project update [プロジェクト]`")
     concept = parser.add_mutually_exclusive_group()
     concept.add_argument("-m", "--message", help="サービスのコアコンセプト。省略時は対話で入力を受ける")
     concept.add_argument("--concept-file", help="コアコンセプトを書いたファイル（UTF-8）")
@@ -369,12 +387,32 @@ def create_project(args: argparse.Namespace, stdin=None) -> int:
     return launch_agent(args.agent, target, args.no_launch)
 
 
+def build_update_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="new-speckit-project update",
+        description="作成済みのプロジェクトに、scaffold の新しい版（スキル、スクリプト、ルールなど）を取り込む。"
+                    "手で直したファイルは上書きせず、新しい版を .scaffold-new/ に置いて報告する。",
+    )
+    parser.add_argument("project", nargs="?", default=".", help="更新するプロジェクトのディレクトリ（既定: 今のディレクトリ）")
+    parser.add_argument("--ref", default=os.environ.get("SPECKIT_SCAFFOLD_REF", DEFAULT_REF),
+                        help=f"取り込む scaffold のブランチまたはタグ（既定: {DEFAULT_REF}）")
+    parser.add_argument("--repo", default=os.environ.get("SPECKIT_SCAFFOLD_REPO", DEFAULT_REPO),
+                        help="scaffold の Git リポジトリ（既定: my-speckit-scaffold の GitHub）")
+    parser.add_argument("--dry-run", action="store_true", help="変更せずに、何が変わるかだけを表示する")
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if not stream.isatty() and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
-    args = build_parser().parse_args(argv)
+    argv = sys.argv[1:] if argv is None else argv
     try:
+        if argv and argv[0] == "update":
+            from . import update
+
+            return update.run_update(build_update_parser().parse_args(argv[1:]))
+        args = build_parser().parse_args(argv)
         return create_project(args)
     except CliError as error:
         print(f"エラー: {error}", file=sys.stderr)

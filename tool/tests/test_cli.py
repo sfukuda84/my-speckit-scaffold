@@ -90,7 +90,7 @@ class NewProjectTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertFalse((target / ".github" / "workflows" / "scaffold-tests.yml").exists())
         moved = (target / "docs" / "speckit-scaffold.md").read_text(encoding="utf-8")
-        self.assertTrue(moved.startswith("> この文書は、プロジェクトの作成に使った scaffold"))
+        self.assertTrue(moved.startswith("> この文書は、プロジェクトの作成または更新に使った scaffold"))
 
     def test_existing_empty_dir_is_cleared_on_failure(self) -> None:
         """L9: 元から空だったディレクトリに作成して失敗したら、ディレクトリは残して中身を消す。"""

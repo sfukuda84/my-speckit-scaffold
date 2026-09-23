@@ -213,11 +213,17 @@ class BuildTest(unittest.TestCase):
             (Path(tmp) / "design.yaml").write_text("template: brand.pptx\ntemplate_layout: Blank\n", encoding="utf-8")
             d = Path(tmp) / "customer"
             d.mkdir()
-            (d / "slides.md").write_text("# 見出し\n- 項目\n", encoding="utf-8")
+            (d / "slides.md").write_text("<!-- layout: title -->\n# 表紙\n副題\n\n---\n\n# 見出し\n- 項目\n",
+                                         encoding="utf-8")
             self.assertEqual(build_pptx.main([str(d / "slides.md")]), 0)
             prs = Presentation(str(d / "proposal.pptx"))
-            self.assertEqual(len(prs.slides), 1)
+            self.assertEqual(len(prs.slides), 2)
             self.assertEqual(prs.slides[0].slide_layout.name, "Blank")
+            # 雛形では背景を描かないので、表紙の文字は白（on_primary）ではなく見出しの色で描く
+            runs = [r for sh in prs.slides[0].shapes if sh.has_text_frame
+                    for p in sh.text_frame.paragraphs for r in p.runs]
+            title = next(r for r in runs if r.text == "表紙")
+            self.assertEqual(str(title.font.color.rgb), build_pptx.DEFAULT_DESIGN["colors"]["primary"])
 
 
 if __name__ == "__main__":

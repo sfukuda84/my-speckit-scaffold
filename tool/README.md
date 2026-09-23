@@ -25,6 +25,14 @@ new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <�
 | `--repo` | scaffold の Git リポジトリ（環境変数 `SPECKIT_SCAFFOLD_REPO` でも指定できる） |
 | `--no-launch` | エージェントを起動せず、手順の案内だけを表示する |
 
+## 作成済みのプロジェクトを更新する
+
+```bash
+new-speckit-project update [プロジェクト] [--dry-run] [--ref <ブランチまたはタグ>] [--repo <リポジトリ>]
+```
+
+scaffold の持ち物（スキル、Spec Kit のスクリプトとテンプレート、ルール、`MANUAL.md` など）だけを取り込み、1 つのコミットにする。scaffold のどの版とも中身が一致しないファイルは手で直したものとみなして上書きせず、新しい版を `.scaffold-new/` に置く。取り込んだ版は `.specify/scaffold.json` に記録する。
+
 ## 開発
 
 ```bash
