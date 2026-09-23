@@ -54,6 +54,8 @@ inclusion: always
 | `speckit-architecture` | 機能一覧を実現するアーキテクチャと技術スタックを、SaaS/PaaS・クラウド・VPS の 3 系統の比較から選び、`docs/architecture.md` に書く |
 | `speckit-common-feature` | 認証やメール送信など、コアドメイン以外の共通機能を `docs/feature/000-app-basic.md` に定義する |
 | `speckit-nfr-feature` | 全機能が守る非機能要件を `docs/nfr.md` に、監視・バックアップ・CI/CD などの運用基盤を `docs/feature/999-app-nfr.md` に定義する |
+| `speckit-project` | 市場規模、価格と収支計画、KPI、スケジュール、体制、リスクをヒアリングと出典付きの調査で決め、事業計画の正本 `docs/project.md` に書く。収支は `plan.py` で計算する（立ち上げの後に任意で実行する） |
+| `speckit-presentation` | `docs/project.md` などの成果物から、読み手（社内の承認・投資家・顧客）に合わせた企画書を `docs/presentation/<読み手>/` に作る。内容は `slides.md`、見た目は `design.yaml` に書き、`build_pptx.py` で pptx にする（pptx は手で直さない） |
 | `speckit-concept-2-feature` | `docs/concept/` のコアコンセプトを、`speckit-specify` に渡せる単位の機能概要（`docs/feature/`）と着手順序（`spec_order.md`）に仕分ける |
 | `speckit-feature` | 仕様工程。worktree で specify・clarify ×2・plan・tasks・analyze ×3 を行い、`main` にマージする |
 | `speckit-coding` | 実装工程。worktree で implement・converge・レビュー ×2 を行い、`main` にマージする |
@@ -94,10 +96,12 @@ docs/
 ├── concept/                 # コアコンセプト（入力）と backlog.md
 ├── feature/                 # 機能概要（000 は共通基盤、999 は運用基盤）と spec_order.md
 ├── architecture.md          # 構成と技術スタック（speckit-architecture）
+├── project.md               # 事業計画（speckit-project）
+├── presentation/            # 企画書（speckit-presentation）。design.yaml と <読み手>/slides.md・proposal.pptx
 └── nfr.md                   # 全機能が守る非機能要件（speckit-nfr-feature）
 .kiro/steering/              # エージェント共通ルールの正本（このディレクトリ）
 ```
 
 `.specify/templates/`、`.specify/scripts/`、各エージェントの `speckit-*` スキルは Specify CLI が管理するファイルなので、直接編集しない。
 
-このプロジェクトでは `specify init --here --force`、`specify integration install` / `upgrade` / `switch` を実行しない。スキルがシンボリックリンクのため、リンク先の共有スキルがエージェント固有の内容で上書きされる。スキルを更新するときは、`skills/speckit/` 側で行う。
+このプロジェクトでは `specify init --here --force`、`specify integration install` / `upgrade` / `switch` / `uninstall` を実行しない。スキルがシンボリックリンクのため、リンク先の共有スキルがエージェント固有の内容で上書きされるか、削除される。エージェント向けの manifest（`.specify/integrations/*.manifest.json`）は実体と対応しないため置いていない。スキルを更新するときは、`skills/speckit/` 側で行う。

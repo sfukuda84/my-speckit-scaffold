@@ -121,6 +121,19 @@ class ValidateReservedOrders(unittest.TestCase):
         ], ["000-app-basic", "001-booking", "999-app-nfr"])
         self.assertNotIn("連番", self.run_validate(d).stdout)
 
+    def test_output_survives_cp932_console(self) -> None:
+        """H5: Windows の日本語環境（標準出力が cp932）でも、— を含む警告の出力で落ちない。"""
+        import os
+
+        d = build(self.tmp, [
+            ("000-app-basic", "アプリ基盤", "MVP", 0, "—"),
+            ("001-booking", "予約", "MVP", 1, "—"),
+        ], ["000-app-basic", "001-booking"])
+        proc = subprocess.run([sys.executable, str(VALIDATE), str(d)], capture_output=True,
+                              env={**os.environ, "PYTHONIOENCODING": "cp932"})
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
+        self.assertIn("依存していない", proc.stdout.decode("utf-8"))
+
     def test_without_reserved_features_behaves_as_before(self) -> None:
         d = build(self.tmp, [
             ("001-booking", "予約", "MVP", 1, "—"),

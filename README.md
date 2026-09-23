@@ -66,6 +66,19 @@ new-speckit-project ~/work/my-app --agent codex        # 使うエージェン�
 
 `speckit-all` を引数なしで実行すると、`000-app-basic` から 1 件ずつ、仕様から実装までを通して進める。工程を分けたい場合は `speckit-feature`（仕様）と `speckit-coding`（実装）を使う（→「worktree を使った実行」）。
 
+### 5. 事業計画（任意）
+
+事業計画（市場規模、価格と収支計画、KPI、スケジュール、体制、リスク）が必要な場合は、`speckit-project` で `docs/project.md` を作る。収支は、前提の表から `plan.py` が楽観・標準・悲観の 3 シナリオで計算する。
+
+### 6. 企画書（任意）
+
+`speckit-presentation` で、成果物から読み手（社内の承認 `internal`、投資家 `investor`、顧客・パートナー `customer`）に合わせた企画書を PowerPoint で作る。
+
+- 内容は `docs/presentation/<読み手>/slides.md`、見た目は `docs/presentation/design.yaml` に書き、`build_pptx.py`（`uv run` で実行。python-pptx を使う）が `proposal.pptx` にする。
+- 会社の雛形の .pptx を `design.yaml` の `template` に指定すると、その背景とマスターの上に描く。
+- pptx を PowerPoint で手で直すと、次に作り直したときに消える。直したい点は `slides.md` か `design.yaml` に反映する。
+- 数字は成果物（とくに `docs/project.md`）にあるものだけを使い、出典をスライドに入れる。
+
 ## ディレクトリ構成
 
 ```text
@@ -89,6 +102,8 @@ new-speckit-project ~/work/my-app --agent codex        # 使うエージェン�
 │   ├── concept/              # コアコンセプト（入力）と backlog.md
 │   ├── feature/              # 機能概要と着手順序
 │   ├── architecture.md       # 構成と技術スタック（speckit-architecture が作る）
+│   ├── project.md            # 事業計画（speckit-project が作る）
+│   ├── presentation/         # 企画書（speckit-presentation が作る）
 │   └── nfr.md                # 非機能要件（speckit-nfr-feature が作る）
 ├── specs/                    # フィーチャーごとの仕様・設計・タスク（Spec Kit の成果物）
 └── tool/                     # new-speckit-project コマンドとテスト（新規プロジェクトには含まれない）
@@ -133,6 +148,8 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 | `speckit-concept-2-feature` | `docs/concept/` を、`speckit-specify` に 1 回で渡せる単位の機能概要（`docs/feature/`）に仕分ける。共通機能は機能にせず、共通基盤の候補として記録する |
 | `speckit-architecture` | 機能一覧を実現する構成と技術スタックを、3 系統の比較から選んで `docs/architecture.md` に書く |
 | `speckit-common-feature` | 認証やメール送信などの共通機能を `docs/feature/000-app-basic.md` に定義する |
+| `speckit-project` | 事業計画（市場、価格と収支、KPI、スケジュール、体制、リスク）を `docs/project.md` に定義する。収支は `plan.py` で計算・検算する |
+| `speckit-presentation` | 成果物から、読み手に合わせた企画書（pptx）を作る。内容は `slides.md`、見た目は `design.yaml`、変換は `build_pptx.py` |
 | `speckit-nfr-feature` | 非機能要件を `docs/nfr.md`（横断要件）と `docs/feature/999-app-nfr.md`（運用基盤）に定義する |
 | `speckit-feature` | 仕様工程。specify → clarify ×2 → plan → tasks → analyze ×3 を行い、`main` にマージする |
 | `speckit-coding` | 実装工程。implement → converge → レビュー ×2 を行い、`main` にマージする |
@@ -156,7 +173,7 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 
 ## worktree を使った実行（speckit-feature / speckit-coding / speckit-all）
 
-フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップが終わるたびにコミットする。コミットには trailer `Speckit-Step: <ステップ>` を付けて進捗を記録する。
+フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップが終わるたびにコミットする。コミットには trailer `Speckit-Step: <ステップ>` と `Speckit-Feature: <NNN-name>` を付けて進捗を記録する。着手順は `docs/feature/spec_order.md` の並びに従い、機能ファイルの状態欄は S2 で `spec化済み`、S11 で `完了` に自動で更新される。
 
 | ステップ | 内容 | 担当 |
 |---|---|---|
@@ -169,6 +186,7 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 - **`speckit-all` のとき**: 仕様工程の後もマージせず、同じ worktree のまま実装工程に進む。
 - **中断したとき**: worktree が残っていれば、どのスキルからでも続きのステップから再開できる。エージェントを変えて再開してもよい。
 - **引数**: 番号（`1`、`002`）、範囲（`002-005`）、`all`、省略（次の未着手）を受け付ける。複数を指定したときは 1 件ずつ直列に進める。
+- **片付け（S12）**: リポジトリのルートで実行する。実装工程では、`tasks.md` に未完了のタスクが残っているとマージの前に止まり、残してよいかを確認する。
 
 進捗の確認と中止は、ヘルパースクリプトでも行える（Windows で `python3` がない場合は `python` か `py -3`）。
 
@@ -190,10 +208,16 @@ python3 $H abort 002              # 破棄する対象の確認（実際に破�
   done
   ```
 
-- テストは `tool/` で実行する（`cd tool && python3 -m unittest discover -s tests`）。worktree 管理のスクリプト、`validate.py`、`new-speckit-project` のテストが含まれる。
+- テストは `tool/` で実行する。worktree 管理のスクリプト、`validate.py`、`plan.py`、`build_pptx.py`、`new-speckit-project` のテストが含まれる。pptx の生成のテストは python-pptx があるときだけ動くので、uv で依存を足して実行する。
+
+  ```bash
+  cd tool && uv run --no-project --with python-pptx --with pyyaml python -m unittest discover -s tests
+  ```
 - **このリポジトリでも、作成したプロジェクトでも、次の Specify CLI のコマンドを実行しない。** スキルがシンボリックリンクのため、リンク先の `skills/speckit/` がエージェント固有の内容で上書きされる。
   - `specify init --here --force`
-  - `specify integration install` / `upgrade` / `switch`
+  - `specify integration install` / `upgrade` / `switch` / `uninstall`（`uninstall` は共有スキルの実体まで消すおそれがある）
+
+  エージェント向けの manifest（`.specify/integrations/*.manifest.json`）は、今のスキルの実体と対応しないため置いていない。
 
   Spec Kit を新しい版にするときは、別のディレクトリで `specify init --integration codex --script py` と `specify init --integration opencode --script py` を実行し、生成されたスキル、`.specify/scripts/python/`、`.opencode/commands/` を確かめてから取り込む。
 

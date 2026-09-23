@@ -30,9 +30,9 @@ python3 <skills>/speckit-worktree/scripts/worktree_helper.py <command> ...
 | `$HELPER ensure <feature> --phase spec\|coding\|all` | S1 準備。worktree があれば再利用し、なければ `main` から作る |
 | `$HELPER state <feature> --phase spec\|coding\|all` | 変更せずに進捗を表示する |
 | `$HELPER checkpoint <feature> <step> "<subject>"` | worktree の変更をすべてコミットし、ステップの完了を記録する |
-| `$HELPER finish <feature> --phase spec\|coding\|all` | S12 片付け。`main` に `--no-ff` でマージし、worktree とブランチを削除する |
+| `$HELPER finish <feature> --phase spec\|coding\|all [--allow-unchecked]` | S12 片付け。`main` に `--no-ff` でマージし、worktree とブランチを削除する。worktree の外で実行する |
 | `$HELPER abort <feature> [--yes]` | worktree とブランチを破棄する。`--yes` がなければ対象を表示するだけ |
-| `$HELPER list` | 全フィーチャー名を番号順に表示する |
+| `$HELPER list` | 全フィーチャー名を着手順（`spec_order.md` の並び、その後に番号順）で表示する |
 | `$HELPER status` | 全フィーチャーの仕様・実装・worktree の状況を表示する |
 | `$HELPER next --phase spec\|coding\|all` | 次に着手すべきフィーチャーを表示する（途中の worktree を優先） |
 | `$HELPER resolve <query>` | 番号やスラッグからフィーチャー名を決める |
@@ -40,6 +40,7 @@ python3 <skills>/speckit-worktree/scripts/worktree_helper.py <command> ...
 `ensure` と `state` は次の形で結果を出力する。
 
 ```text
+REPO_ROOT: /path/to/repo
 FEATURE_NAME: 001-todo-cli
 BRANCH: feature/001-todo-cli
 WORKTREE_DIR: /path/to/repo/.worktrees/001-todo-cli
@@ -58,6 +59,7 @@ NEXT_STEP: S4
 | `CODING_IN_PROGRESS` | worktree がすでに実装工程に入っている | `speckit-coding` か `speckit-all` での再開を案内する |
 | `SPEC_INCOMPLETE` | worktree の仕様工程が途中 | `speckit-feature` か `speckit-all` での再開を案内する |
 | `SPEC_MISSING` | spec・plan・tasks がどこにもない | `speckit-feature` か `speckit-all` を案内する |
+| `UNCHECKED_TASKS` | `finish`（coding / all）で、`tasks.md` に未完了のタスクが残っている | 未完了のタスクの一覧をユーザーに示す。実装するなら S8 の手順で片付けてから、残したままマージしてよいと確認できたら `--allow-unchecked` を付けて `finish` を再実行する |
 
 ## 2. ステップ番号
 
@@ -80,7 +82,9 @@ NEXT_STEP: S4
 | S11 | レビュー 2 回目と修正 | speckit-coding | `fix(<FEATURE_NAME>): address review feedback (round 2)` |
 | S12 | 片付け（`finish`） | 3 スキル共通 | `merge(<FEATURE_NAME>): <phase>`（自動） |
 
-`checkpoint` はコミットに trailer `Speckit-Step: <step>` を付ける。変更がないステップも空コミットで記録する。進捗は、ブランチ上のこの trailer と、`main` にマージ済みの `tasks.md` の有無から判定する。
+`checkpoint` はコミットに trailer `Speckit-Step: <step>` と `Speckit-Feature: <FEATURE_NAME>` を付ける。変更がないステップも空コミットで記録する。進捗は、`main` とブランチにあるこの trailer、`main` にマージ済みの `tasks.md`、`merge(<FEATURE_NAME>): coding|all` のマージコミットから判定する。フィーチャー名付きの trailer はマージの後も残るので、競合を手で解消してマージした後に `finish` を再実行しても進捗は失われない。
+
+`checkpoint` は、機能ファイル（`docs/feature/<FEATURE_NAME>.md`）があれば、その状態欄と `docs/feature/README.md` の一覧の状態列も更新する。S2 で `spec化済み（specs/<FEATURE_NAME>）`、S11 で `完了` にする。機能ファイルを手で書き換える必要はない。
 
 ## 3. 共通手順
 
@@ -106,13 +110,14 @@ NEXT_STEP: S4
 
 ### S12 片付け
 
-1. `$HELPER finish <FEATURE_NAME> --phase <phase>` を実行する。スクリプトは次を行う。
+1. **worktree の外に出てから**、`$HELPER finish <FEATURE_NAME> --phase <phase>` を実行する（`cd "$REPO_ROOT"`。`REPO_ROOT` は `ensure` の出力にある）。worktree の中で実行すると、スクリプトは止まる。スクリプトは次を行う。
    - 担当範囲の最終ステップ（spec は S7-3、coding と all は S11）が完了していることを確かめる。
+   - coding と all では、`tasks.md` に未完了のタスクがないことを確かめる（あれば `UNCHECKED_TASKS` で止まる）。
    - worktree の残りの変更をコミットする。
    - メインの作業ツリーに未コミットの変更がないことを確かめ、`main` に切り替える。
-   - `git merge --no-ff -m "merge(<FEATURE_NAME>): <phase>"` でマージする。
+   - `git merge --no-ff -m "merge(<FEATURE_NAME>): <phase>"` でマージする。ブランチがすでにマージ済み（競合を手で解消した後など）なら、マージを飛ばして片付けだけを行う。
    - worktree とブランチを削除する。
-2. マージで競合したときは、worktree とブランチが残る。競合の内容をユーザーに示し、解消方針を確認してから、メインの作業ツリーで解消してマージをコミットし、もう一度 `finish` を実行する。
+2. マージで競合したときは、worktree とブランチが残る。競合の内容をユーザーに示し、解消方針を確認してから、メインの作業ツリーで解消してマージをコミットし、もう一度 `finish` を実行する。マージコミットのメッセージは `merge(<FEATURE_NAME>): <phase>` のままにする。
 
 ### 中止
 

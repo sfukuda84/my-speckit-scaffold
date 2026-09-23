@@ -1,0 +1,64 @@
+# デザインスペック（docs/presentation/design.yaml）
+# 読み手ごとの版（docs/presentation/<読み手>/slides.md）で共通に使う。
+# 書かなかった項目は build_pptx.py の既定値になる。
+
+# スライドの大きさ（インチ）。16:9 は 13.333 × 7.5、4:3 は 10 × 7.5
+slide:
+  width_in: 13.333
+  height_in: 7.5
+
+# 雛形の .pptx（この design.yaml からの相対パス）。指定すると、その背景・ロゴ・マスターの上に描く。
+# 雛形を使う場合、スライドの大きさは雛形に従い、背景の塗りは描かない。
+template: null
+# 雛形で使うスライドレイアウトの名前（例: "白紙"、"Blank"）。null ならプレースホルダーが最も少ないもの。
+template_layout: null
+
+# フォント。east_asian は日本語に使う。開く PC にないフォントは、PowerPoint が代わりのフォントで表示する。
+# Windows と Mac の両方で開くなら Meiryo / Yu Gothic、Google スライドに取り込むなら Noto Sans JP が無難。
+fonts:
+  latin: Arial
+  east_asian: Meiryo
+
+# 色（16 進数 6 桁。# は付けても付けなくてもよい）
+colors:
+  primary: "1F3A5F"      # 見出し、表の見出し行、表紙の背景
+  accent: "E07A1F"       # 強調の線、箇条書きの記号、グラフの 2 系列目
+  text: "222222"         # 本文
+  muted: "6B7280"        # 補足、出典、ページ番号
+  background: "FFFFFF"   # 通常のスライドの背景
+  light: "F3F4F6"        # カード、表の縞
+  on_primary: "FFFFFF"   # primary の上に置く文字
+
+# 文字の大きさ（ポイント）
+sizes:
+  title: 40      # 表紙と章の扉の見出し
+  heading: 28    # 各スライドの見出し
+  body: 18       # 本文
+  small: 11      # 出典、ページ番号
+  stat: 44       # stats レイアウトの数値
+  message: 36    # message レイアウトの 1 文
+
+# 余白（インチ）
+margins_in:
+  left: 0.6
+  right: 0.6
+  top: 0.45
+  bottom: 0.45
+
+# フッター（表紙には出さない）
+footer:
+  text: ""            # 例: "社外秘"
+  page_number: true
+
+# ロゴの画像（この design.yaml からの相対パス）。右上に置く。表紙には出さない。
+logo: null
+
+# 1 枚に収める量の上限。build_pptx.py --check が超えた箇所を警告する。
+# 文字数は全角換算（半角は 0.5 文字）。
+limits:
+  title_max_chars: 36
+  bullets: {max_items: 6, max_chars: 45}
+  two-column: {max_items: 5, max_chars: 22}
+  table: {max_rows: 8, max_cols: 5, max_chars: 18}
+  stats: {max_items: 4, max_chars: 24, max_value_chars: 8}   # max_value_chars は数値の部分
+  message: {max_chars: 40}

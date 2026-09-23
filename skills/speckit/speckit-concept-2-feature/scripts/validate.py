@@ -487,6 +487,10 @@ def print_graph(feature_dir: Path, features: dict[str, dict]) -> None:
 
 
 def main() -> int:
+    # Windows の日本語環境では標準出力が cp932 になり、— などを出力すると落ちるため UTF-8 に固定する
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     argv = sys.argv[1:]
     args = [a for i, a in enumerate(argv)
             if not a.startswith("--") and not (i > 0 and argv[i - 1] == "--backlog-file")]

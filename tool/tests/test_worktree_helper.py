@@ -130,9 +130,13 @@ class WorktreeHelperScenario(unittest.TestCase):
         self.assertEqual(self.code("ensure", "2", "--phase", "spec"), 3)
         self.checkpoints("2", "S9 S10 S11")
         self.git("checkout", "-q", "-b", "other")
-        self.assertIn("FINISHED: 002-sync (all)", self.out("finish", "2", "--phase", "all"))
+        # 未完了のタスクが残っているので、確認なしにはマージしない
+        self.assertEqual(self.code("finish", "2", "--phase", "all"), 3)
+        self.assertIn("FINISHED: 002-sync (all)", self.out("finish", "2", "--phase", "all", "--allow-unchecked"))
         self.assertEqual(self.git("branch", "--show-current"), "main")
-        self.assertIn("| 002-sync | 完了 | 未着手 | - |", self.out("status"))
+        # 未完了のタスクが残っていても、実装までマージ済みなら完了として扱い、再び選ばない
+        self.assertIn("| 002-sync | 完了 | 完了 | - |", self.out("status"))
+        self.assertEqual(self.out("next", "--phase", "all"), "")
 
         # 一覧にない完全名と中止
         self.out("ensure", "003-extra", "--phase", "spec")
@@ -141,6 +145,68 @@ class WorktreeHelperScenario(unittest.TestCase):
         self.assertTrue((self.repo / ".worktrees" / "003-extra").is_dir())
         self.assertIn("ABORTED", self.out("abort", "3", "--yes"))
         self.assertFalse((self.repo / ".worktrees" / "003-extra").exists())
+
+    def test_finish_rerun_after_conflict_keeps_progress(self) -> None:
+        """H1: 競合を手で解消してマージした後に finish を再実行しても、進捗が失われない。"""
+        self.out("ensure", "1", "--phase", "all")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli", tasks="- [x] T001\n")
+        (wt / "shared.txt").write_text("branch\n", encoding="utf-8")
+        self.checkpoints("1", "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3 S8 S9 S10 S11")
+        (self.repo / "shared.txt").write_text("main\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "main side change")
+        self.assertEqual(self.code("finish", "1", "--phase", "all"), 1)  # 競合
+        (self.repo / "shared.txt").write_text("resolved\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "resolve conflict")
+        self.assertIn("NEXT_STEP: S12", self.out("state", "1", "--phase", "all"))
+        self.assertIn("FINISHED: 001-todo-cli (all)", self.out("finish", "1", "--phase", "all"))
+        self.assertEqual(self.out("next", "--phase", "all"), "002-sync")
+
+    def test_next_follows_spec_order(self) -> None:
+        """H2: 着手順は番号順ではなく spec_order.md の並びに従う。"""
+        (self.repo / "docs" / "feature" / "spec_order.md").write_text(
+            "- **0. [基盤](./000-app-basic.md)**\n- **3. [後から](./003-late.md)**\n"
+            "- **1. [予約](./001-booking.md)**\n- **999. [運用](./999-app-nfr.md)**\n"
+            "- **2. [集計](./002-report.md)**\n", encoding="utf-8")
+        self.git("commit", "-qam", "order")
+        self.assertEqual(self.out("list").splitlines(),
+                         ["000-app-basic", "003-late", "001-booking", "999-app-nfr", "002-report"])
+        self.assertEqual(self.out("next", "--phase", "spec"), "000-app-basic")
+
+    def test_finish_refuses_inside_worktree(self) -> None:
+        """M1: worktree の中から finish すると止まる。"""
+        self.out("ensure", "1", "--phase", "spec")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli")
+        self.checkpoints("1", "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3")
+        proc = self.run_helper("finish", "1", "--phase", "spec", cwd=wt)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("worktree の外", proc.stderr)
+        self.assertTrue(wt.is_dir())
+
+    def test_checkpoint_updates_feature_status(self) -> None:
+        """M2: S2 で spec化済み、S11 で 完了 に状態欄と README の一覧を更新する。"""
+        fdir = self.repo / "docs" / "feature"
+        (fdir / "001-todo-cli.md").write_text(
+            "# TODO\n\n**状態**: 未着手 | **区分**: MVP | **想定順序**: 1 | **依存**: —\n", encoding="utf-8")
+        (fdir / "README.md").write_text(
+            "| # | 機能 | 区分 | 状態 | 依存 | 一言 |\n|---|---|---|---|---|---|\n"
+            "| 1 | [TODO](./001-todo-cli.md) | MVP | 未着手 | — | a |\n", encoding="utf-8")
+        (fdir / "spec_order.md").write_text("- **1. [TODO](./001-todo-cli.md)**: a\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "feature files")
+        self.out("ensure", "1", "--phase", "all")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli", tasks="- [x] T001\n")
+        self.checkpoints("1", "S2")
+        text = (wt / "docs" / "feature" / "001-todo-cli.md").read_text(encoding="utf-8")
+        self.assertIn("**状態**: spec化済み（specs/001-todo-cli） |", text)
+        self.assertIn("| MVP | spec化済み（specs/001-todo-cli） |", (wt / "docs" / "feature" / "README.md").read_text(encoding="utf-8"))
+        self.checkpoints("1", "S3 S4 S5 S6 S7-1 S7-2 S7-3 S8 S9 S10 S11")
+        self.assertIn("**状態**: 完了 |", (wt / "docs" / "feature" / "001-todo-cli.md").read_text(encoding="utf-8"))
+        self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
 
     def test_gitignore_required(self) -> None:
         (self.repo / ".gitignore").write_text("", encoding="utf-8")

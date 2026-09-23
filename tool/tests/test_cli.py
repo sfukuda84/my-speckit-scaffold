@@ -43,6 +43,8 @@ class NewProjectTest(unittest.TestCase):
         git("init", "-q", "-b", "main", cwd=cls.repo)
         git("add", "-A", cwd=cls.repo)
         git("commit", "-qm", "scaffold", cwd=cls.repo)
+        # file:// で渡すと、ローカルの clone でもハードリンクを使わず通常の転送になる（GitHub からの取得に近い）
+        cls.repo_url = cls.repo.as_uri()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -53,7 +55,7 @@ class NewProjectTest(unittest.TestCase):
     def create(self, name: str, *extra: str) -> tuple[int, Path]:
         target = self.tmp / name
         args = cli.build_parser().parse_args(
-            [str(target), "--repo", str(self.repo), "--no-launch", *extra])
+            [str(target), "--repo", self.repo_url, "--no-launch", *extra])
         return cli.create_project(args), target
 
     def test_create_project(self) -> None:
@@ -87,14 +89,14 @@ class NewProjectTest(unittest.TestCase):
         target = self.tmp / "occupied"
         target.mkdir()
         (target / "x.txt").write_text("x", encoding="utf-8")
-        args = cli.build_parser().parse_args([str(target), "--repo", str(self.repo), "--no-launch", "-m", "x"])
+        args = cli.build_parser().parse_args([str(target), "--repo", self.repo_url, "--no-launch", "-m", "x"])
         with self.assertRaises(cli.CliError):
             cli.create_project(args)
 
     def test_cleans_up_when_clone_fails(self) -> None:
         target = self.tmp / "bad-ref"
         args = cli.build_parser().parse_args(
-            [str(target), "--repo", str(self.repo), "--ref", "no-such-branch", "--no-launch", "-m", "x"])
+            [str(target), "--repo", self.repo_url, "--ref", "no-such-branch", "--no-launch", "-m", "x"])
         with self.assertRaises(cli.CliError):
             cli.create_project(args)
         self.assertFalse(target.exists())
@@ -123,6 +125,20 @@ class NewProjectTest(unittest.TestCase):
         link.write_text("../../skills/speckit/speckit-tasks", encoding="utf-8")
         self.assertEqual(cli.ensure_skill_links(target), [])
         self.assertTrue(link.is_symlink() and (link / "SKILL.md").is_file())
+
+
+class CloneArgsTest(unittest.TestCase):
+    def test_clone_does_not_force_symlinks(self) -> None:
+        """H6: clone で core.symlinks=true を強制しない（Windows でリンクを作れない環境で clone が失敗するため）。"""
+        calls: list[list[str]] = []
+        original = cli.run_git
+        cli.run_git = lambda args, cwd=None: calls.append(args) or "0" * 40
+        try:
+            cli.clone_scaffold("https://example.com/r.git", "main", Path("/tmp/x"))
+        finally:
+            cli.run_git = original
+        self.assertTrue(calls[0][0] == "clone")
+        self.assertFalse(any("core.symlinks" in a for a in calls[0]))
 
 
 class ReadConceptTest(unittest.TestCase):

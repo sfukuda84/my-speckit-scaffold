@@ -161,8 +161,9 @@ def read_concept(message: str | None, concept_file: str | None,
 def clone_scaffold(repo: str, ref: str, target: Path) -> str:
     """scaffold を clone し、元のコミットの SHA を返す。"""
     info(f"==> scaffold を取得します: {repo}（{ref}）")
-    run_git(["clone", "--quiet", "--depth", "1", "--branch", ref,
-             "-c", "core.symlinks=true", repo, str(target)])
+    # core.symlinks は強制しない。Windows でシンボリックリンクを作れない環境で true を強制すると clone 自体が失敗するため、
+    # git の既定の判定に任せ、リンクが通常のファイルとして取り出された場合は ensure_skill_links で直す。
+    run_git(["clone", "--quiet", "--depth", "1", "--branch", ref, repo, str(target)])
     return run_git(["rev-parse", "HEAD"], cwd=target)
 
 

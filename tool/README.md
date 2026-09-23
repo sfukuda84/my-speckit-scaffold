@@ -29,7 +29,7 @@ new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <�
 
 ```bash
 cd tool
-python3 -m unittest discover -s tests
+uv run --no-project --with python-pptx --with pyyaml python -m unittest discover -s tests
 ```
 
-テストは、作業ツリーの scaffold を一時的な Git リポジトリにして、そこから作成を試す。worktree 管理のスクリプトと `validate.py` のテストも含む。
+テストは、作業ツリーの scaffold を一時的な Git リポジトリにして、そこから作成を試す。worktree 管理のスクリプト、`validate.py`、`plan.py`、`build_pptx.py` のテストも含む（python-pptx がなければ、pptx の生成のテストは飛ばす）。
