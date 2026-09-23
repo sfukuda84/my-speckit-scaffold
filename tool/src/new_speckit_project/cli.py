@@ -18,6 +18,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -27,8 +28,8 @@ DEFAULT_REPO = "https://github.com/sfukuda84/my-speckit-scaffold.git"
 DEFAULT_REF = "main"
 SKILL_DIRS = (".claude/skills", ".agents/skills", ".kiro/skills")
 SHARED_SKILLS = "skills/speckit"
-# 新規プロジェクトに持ち込まない scaffold 側のファイル
-EXCLUDED_PATHS = ("tool",)
+# 新規プロジェクトに持ち込まない scaffold 側のファイル（scaffold 自体の開発用）
+EXCLUDED_PATHS = ("tool", ".github/workflows/scaffold-tests.yml")
 SCAFFOLD_README = "docs/speckit-scaffold.md"
 CONCEPT_FILE = "docs/concept/core-concept.md"
 
@@ -42,9 +43,11 @@ class CliError(Exception):
 def _codex_command(exe: str, root: Path) -> list[str]:
     # workspace-write のサンドボックスでは .git が読み取り専用になり、コミットやブランチの作成ができない。
     # サンドボックスは保ったまま、.git だけを書き込み可能にする（TOML のリテラル文字列で Windows のパスも扱う）。
+    # 立ち上げのスキルは出典付きの Web 調査を行い、実装では依存パッケージを取得するので、Web 検索とネットワークも有効にする。
     git_dir = str((root / ".git").resolve())
-    return [exe, "--sandbox", "workspace-write",
+    return [exe, "--sandbox", "workspace-write", "--search",
             "-c", f"sandbox_workspace_write.writable_roots=['{git_dir}']",
+            "-c", "sandbox_workspace_write.network_access=true",
             "$speckit-bootstrap"]
 
 
@@ -60,7 +63,7 @@ AGENTS: dict[str, tuple[str, Callable[[str, Path], list[str]]]] = {
 
 MANUAL_INVOCATION = {
     "claude": "claude を起動して /speckit-bootstrap",
-    "codex": "codex を起動して $speckit-bootstrap（.git への書き込みを許可すること）",
+    "codex": "codex を起動して $speckit-bootstrap（.git への書き込み、Web 検索、ネットワークを許可すること）",
     "agy": "agy を起動して /speckit-bootstrap",
     "kiro": f"kiro-cli chat を起動して「{NATURAL_PROMPT}」",
     "opencode": f"opencode を起動して「{NATURAL_PROMPT}」",
@@ -101,11 +104,29 @@ def remove_tree(path: Path) -> None:
         shutil.rmtree(path, onerror=on_error)
 
 
-def detect_python(which: Callable[[str], str | None] = shutil.which) -> str | None:
+def clear_directory(path: Path) -> None:
+    """ディレクトリ自体は残して、中身だけを消す（元から空だったディレクトリに作成して失敗した場合の片付け）。"""
+    for child in path.iterdir():
+        remove_tree(child)
+
+
+def _runs_python3(exe: str) -> bool:
+    """本当に Python 3.9 以上が動くか（Windows の Microsoft Store の代わりの実行ファイルを除くため、実際に起動する）。"""
+    code = "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)"
+    args = [exe, "-3", "-c", code] if Path(exe).stem.lower() == "py" else [exe, "-c", code]
+    try:
+        return subprocess.run(args, capture_output=True, timeout=20).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def detect_python(which: Callable[[str], str | None] = shutil.which,
+                  runs: Callable[[str], bool] = _runs_python3) -> str | None:
     """スキルのスクリプトを動かせる Python のコマンド名。"""
     for name in ("python3", "python", "py"):
-        if which(name):
-            return name
+        exe = which(name)
+        if exe and runs(exe):
+            return "py -3" if name == "py" else name
     return None
 
 
@@ -117,12 +138,28 @@ def check_target(target: Path) -> None:
 
 
 def check_git_identity() -> None:
+    """新しいリポジトリでコミットできるか。今いるディレクトリのリポジトリの設定に左右されないよう、一時ディレクトリで確かめる。"""
     if shutil.which("git") is None:
         raise CliError("git が見つかりません。Git をインストールしてください。")
-    for key in ("user.name", "user.email"):
-        proc = subprocess.run(["git", "config", "--get", key], capture_output=True, text=True)
-        if proc.returncode != 0 or not proc.stdout.strip():
-            raise CliError(f"git の {key} が設定されていません。`git config --global {key} <値>` で設定してください。")
+    proc = subprocess.run(["git", "var", "GIT_COMMITTER_IDENT"], cwd=tempfile.gettempdir(),
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        raise CliError("git の user.name と user.email が設定されていません。"
+                       "`git config --global user.name <名前>` と `git config --global user.email <アドレス>` で設定してください。")
+
+
+def read_text_any(path: Path) -> str:
+    """UTF-8（BOM 付きも可）で読み、読めなければ Windows の日本語の既定（cp932）で読む。"""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise CliError(f"{path} を読めません: {error}") from error
+    for encoding in ("utf-8-sig", "cp932"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise CliError(f"{path} の文字コードを判定できません。UTF-8 で保存してください。")
 
 
 def read_concept(message: str | None, concept_file: str | None,
@@ -132,7 +169,7 @@ def read_concept(message: str | None, concept_file: str | None,
     if message is not None:
         text = message
     elif concept_file is not None:
-        text = Path(concept_file).read_text(encoding="utf-8")
+        text = read_text_any(Path(concept_file))
     else:
         if interactive is None:
             interactive = stdin.isatty()
@@ -170,7 +207,13 @@ def clone_scaffold(repo: str, ref: str, target: Path) -> str:
 def strip_scaffold(target: Path) -> None:
     remove_tree(target / ".git")
     for rel in EXCLUDED_PATHS:
-        remove_tree(target / rel)
+        path = target / rel
+        remove_tree(path)
+        # 除いた結果、空になった親ディレクトリ（.github/workflows など）も消す
+        parent = path.parent
+        while parent != target and parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
 
 
 # --- C2: シンボリックリンクの確認 -------------------------------------------------
@@ -211,8 +254,18 @@ def ensure_skill_links(root: Path, symlink: Callable[..., None] = os.symlink) ->
 def write_project_files(root: Path, concept: str, repo: str, ref: str, sha: str) -> None:
     readme = root / "README.md"
     if readme.exists():
-        (root / SCAFFOLD_README).parent.mkdir(parents=True, exist_ok=True)
-        readme.replace(root / SCAFFOLD_README)
+        moved = root / SCAFFOLD_README
+        moved.parent.mkdir(parents=True, exist_ok=True)
+        original = readme.read_text(encoding="utf-8")
+        web = repo.removesuffix(".git")
+        # scaffold の README の写し。tool/ は持ち込まないので、tool/README.md への相対リンクは GitHub の URL に直す
+        if web.startswith("https://"):
+            original = original.replace("](tool/README.md)", f"]({web}/blob/{ref}/tool/README.md)")
+        moved.write_text(
+            f"> この文書は、プロジェクトの作成に使った scaffold（{web}、{ref}、{sha[:7]}）の README の写しである。"
+            "scaffold 自体の開発に関する節（「scaffold の更新」など）は、このプロジェクトには当てはまらない。\n\n"
+            + original, encoding="utf-8")
+        readme.unlink()
     name = root.name
     readme.write_text(
         f"# {name}\n\n"
@@ -299,6 +352,8 @@ def create_project(args: argparse.Namespace, stdin=None) -> int:
     except BaseException:
         if created and target.exists():
             remove_tree(target)
+        elif target.exists():
+            clear_directory(target)  # 元から空だったディレクトリは残し、中身だけを消す
         raise
 
     info(f"==> プロジェクトを作成しました: {target}")
@@ -310,7 +365,7 @@ def create_project(args: argparse.Namespace, stdin=None) -> int:
     if python is None:
         info("警告: Python が見つかりません。Spec Kit とスキルのスクリプトには Python 3.9 以上が必要です。")
     elif python != "python3":
-        info(f"注意: python3 がないため、スキルのスクリプトは {python} で実行されます（steering に読み替えのルールがあります）。")
+        info(f"注意: python3 が使えないため、スキルのスクリプトは {python} で実行されます（steering に読み替えのルールがあります）。")
     return launch_agent(args.agent, target, args.no_launch)
 
 

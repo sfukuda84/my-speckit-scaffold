@@ -28,7 +28,7 @@
 
 ## 前提・設計原則との関係
 
-- **共通標準**: <前提にする共通基盤・architecture の節（例: architecture.md §5 Workspace・Role）>
+- **共通標準**: <前提にする共通基盤・architecture の節（例: docs/architecture.md の認証・認可の節、000-app-basic のロールと権限）>
 - **固有の制約**: <premises P6 などから、この機能に効く法規制・セキュリティ要件>
 
 ## スコープ外

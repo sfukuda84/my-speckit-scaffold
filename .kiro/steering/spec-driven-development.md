@@ -36,11 +36,13 @@ inclusion: always
 |---|---|---|
 | Claude Code | `.claude/skills/speckit-*/` | `/speckit-specify <要求>` |
 | Codex CLI | `.agents/skills/speckit-*/` | `$speckit-specify <要求>` |
-| Antigravity (agy) | `.agents/skills/speckit-*/` | スキル `speckit-specify` を指定して依頼する |
+| Antigravity (agy) | `.agents/skills/speckit-*/` | `/speckit-specify <要求>` |
 | Kiro CLI | `.kiro/skills/speckit-*/` | スキル `speckit-specify` を指定して依頼する |
 | opencode | `.opencode/commands/speckit.*.md` | `/speckit.specify <要求>` |
 
 `.claude/skills/`、`.agents/skills/`、`.kiro/skills/` の各 `speckit-*` は、プロジェクト内の共有スキル `skills/speckit/` への相対シンボリックリンクであり、全エージェントが同じスキル定義を使う。
+
+スキルの本文にある `AskUserQuestion`（選択肢付きの質問）、`WebSearch` / `WebFetch`（Web 検索とページの取得）は Claude Code のツール名である。ほかのエージェントでは、同じ働きのツールを使う。質問のツールがなければ、選択肢と推奨案を文章で示してユーザーの回答を待つ。Web を調べられない環境では、推測で埋めずに、調査が必要な項目と理由をユーザーに伝える。
 
 共有スキルは Codex 向けに生成されているため、スキル本文中のコマンド参照は `$speckit-plan` のような Codex の書き方になっている。ユーザーに次のコマンドを提示するときは、上の表に従って自分のエージェントの呼び出し方に読み替える（例: Claude Code と Antigravity では `/speckit-plan`、Kiro CLI ではスキル名 `speckit-plan`、opencode では `/speckit.plan`）。
 
@@ -63,7 +65,7 @@ inclusion: always
 | `speckit-worktree` | 上の 3 スキルが使う worktree 管理と共通の実行規則。進捗の確認（`status`）や中止（`abort`）にも使う |
 | `speckit-review` | Standards 軸と Spec 軸の 2 軸でコード変更をレビューする |
 
-`speckit-feature`、`speckit-coding`、`speckit-all` は、フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップごとにコミットして進捗を記録する。中断しても、どのスキルからでも続きのステップから再開できる。
+`speckit-feature`、`speckit-coding`、`speckit-all` は、フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップごとにコミットして進捗を記録する。中断しても、どのスキルからでも続きのステップから再開できる。worktree で作業している間は、Spec Kit のスキルが「リポジトリのルート（repo root）」と書いている箇所を worktree のディレクトリに読み替える。既定のブランチが `main` 以外なら、環境変数 `SPECKIT_MAIN_BRANCH` にその名前を指定する。
 
 ## エージェントの行動規範
 
@@ -102,6 +104,6 @@ docs/
 .kiro/steering/              # エージェント共通ルールの正本（このディレクトリ）
 ```
 
-`.specify/templates/`、`.specify/scripts/`、各エージェントの `speckit-*` スキルは Specify CLI が管理するファイルなので、直接編集しない。
+`.specify/templates/`、`.specify/scripts/` と、Spec Kit の標準スキル（`speckit-specify`、`speckit-plan` など、上の標準ワークフローの表にあるもの）は Specify CLI が生成したファイルなので、直接編集しない。追加スキルは `skills/speckit/` のファイルを直接編集してよい。どちらも、各エージェントのスキルディレクトリ（`.claude/skills/` など）にあるのはシンボリックリンクなので、編集は `skills/speckit/` 側で行う。
 
 このプロジェクトでは `specify init --here --force`、`specify integration install` / `upgrade` / `switch` / `uninstall` を実行しない。スキルがシンボリックリンクのため、リンク先の共有スキルがエージェント固有の内容で上書きされるか、削除される。エージェント向けの manifest（`.specify/integrations/*.manifest.json`）は実体と対応しないため置いていない。スキルを更新するときは、`skills/speckit/` 側で行う。

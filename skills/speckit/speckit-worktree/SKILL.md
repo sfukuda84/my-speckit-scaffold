@@ -30,11 +30,11 @@ python3 <skills>/speckit-worktree/scripts/worktree_helper.py <command> ...
 | `$HELPER ensure <feature> --phase spec\|coding\|all` | S1 準備。worktree があれば再利用し、なければ `main` から作る |
 | `$HELPER state <feature> --phase spec\|coding\|all` | 変更せずに進捗を表示する |
 | `$HELPER checkpoint <feature> <step> "<subject>"` | worktree の変更をすべてコミットし、ステップの完了を記録する |
-| `$HELPER finish <feature> --phase spec\|coding\|all [--allow-unchecked]` | S12 片付け。`main` に `--no-ff` でマージし、worktree とブランチを削除する。worktree の外で実行する |
+| `$HELPER finish <feature> --phase spec\|coding\|all [--allow-unchecked] [--commit-leftovers] [--switch]` | S12 片付け。`main` に `--no-ff` でマージし、worktree とブランチを削除する。worktree の外で実行する |
 | `$HELPER abort <feature> [--yes]` | worktree とブランチを破棄する。`--yes` がなければ対象を表示するだけ |
 | `$HELPER list` | 全フィーチャー名を着手順（`spec_order.md` の並び、その後に番号順）で表示する |
 | `$HELPER status` | 全フィーチャーの仕様・実装・worktree の状況を表示する |
-| `$HELPER next --phase spec\|coding\|all` | 次に着手すべきフィーチャーを表示する（途中の worktree を優先） |
+| `$HELPER next --phase spec\|coding\|all [--skip <feature,...>]` | 次に着手すべきフィーチャーを表示する（途中の worktree を優先。`--skip` で除外） |
 | `$HELPER resolve <query>` | 番号やスラッグからフィーチャー名を決める |
 
 `ensure` と `state` は次の形で結果を出力する。
@@ -59,6 +59,8 @@ NEXT_STEP: S4
 | `CODING_IN_PROGRESS` | worktree がすでに実装工程に入っている | `speckit-coding` か `speckit-all` での再開を案内する |
 | `SPEC_INCOMPLETE` | worktree の仕様工程が途中 | `speckit-feature` か `speckit-all` での再開を案内する |
 | `SPEC_MISSING` | spec・plan・tasks がどこにもない | `speckit-feature` か `speckit-all` を案内する |
+| `LEFTOVER_CHANGES` | `finish` で、worktree にどのステップのコミットにも含まれていない変更がある | 変更の一覧をユーザーに示す。マージに含めてよければ `--commit-leftovers` を付けて再実行する。含めない変更は、ユーザーの了承を得て取り除く |
+| `NOT_ON_MAIN` | `finish` で、メインの作業ツリーが `main` 以外のブランチにいる | 切り替えてよいかをユーザーに確認し、よければ `--switch` を付けて再実行する |
 | `UNCHECKED_TASKS` | `finish`（coding / all）で、`tasks.md` に未完了のタスクが残っている | 未完了のタスクの一覧をユーザーに示す。実装するなら S8 の手順で片付けてから、残したままマージしてよいと確認できたら `--allow-unchecked` を付けて `finish` を再実行する |
 
 ## 2. ステップ番号
@@ -68,19 +70,19 @@ NEXT_STEP: S4
 | ステップ | 内容 | 担当スキル | チェックポイントの subject |
 |---|---|---|---|
 | S1 | 準備（`ensure`） | 3 スキル共通 | （コミットなし） |
-| S2 | specify（仕様作成） | speckit-feature | `docs(spec): specify <FEATURE_NAME>` |
-| S3 | clarify 1 回目 | speckit-feature | `docs(spec): clarify round 1 <FEATURE_NAME>` |
-| S4 | clarify 2 回目 | speckit-feature | `docs(spec): clarify round 2 <FEATURE_NAME>` |
-| S5 | plan（詳細設計） | speckit-feature | `docs(plan): plan <FEATURE_NAME>` |
-| S6 | tasks（タスク分解） | speckit-feature | `docs(tasks): tasks <FEATURE_NAME>` |
-| S7-1 | analyze 1 回目 | speckit-feature | `docs(spec): analyze pass 1 <FEATURE_NAME>` |
-| S7-2 | analyze 2 回目 | speckit-feature | `docs(spec): analyze pass 2 <FEATURE_NAME>` |
-| S7-3 | analyze 3 回目 | speckit-feature | `docs(spec): analyze pass 3 <FEATURE_NAME>` |
-| S8 | implement（実装） | speckit-coding | `feat(<FEATURE_NAME>): implement tasks` |
-| S9 | converge（収束） | speckit-coding | `feat(<FEATURE_NAME>): converge implementation` |
-| S10 | レビュー 1 回目と修正 | speckit-coding | `fix(<FEATURE_NAME>): address review feedback (round 1)` |
-| S11 | レビュー 2 回目と修正 | speckit-coding | `fix(<FEATURE_NAME>): address review feedback (round 2)` |
-| S12 | 片付け（`finish`） | 3 スキル共通 | `merge(<FEATURE_NAME>): <phase>`（自動） |
+| S2 | specify（仕様作成） | speckit-feature | `docs(<FEATURE_NAME>): 仕様を作成` |
+| S3 | clarify 1 回目 | speckit-feature | `docs(<FEATURE_NAME>): 仕様を明確化（1 回目）` |
+| S4 | clarify 2 回目 | speckit-feature | `docs(<FEATURE_NAME>): 仕様を明確化（2 回目）` |
+| S5 | plan（詳細設計） | speckit-feature | `docs(<FEATURE_NAME>): 詳細設計を作成` |
+| S6 | tasks（タスク分解） | speckit-feature | `docs(<FEATURE_NAME>): タスクを分解` |
+| S7-1 | analyze 1 回目 | speckit-feature | `docs(<FEATURE_NAME>): 整合性を検証（1 回目）` |
+| S7-2 | analyze 2 回目 | speckit-feature | `docs(<FEATURE_NAME>): 整合性を検証（2 回目）` |
+| S7-3 | analyze 3 回目 | speckit-feature | `docs(<FEATURE_NAME>): 整合性を検証（3 回目）` |
+| S8 | implement（実装） | speckit-coding | `feat(<FEATURE_NAME>): タスクを実装` |
+| S9 | converge（収束） | speckit-coding | `feat(<FEATURE_NAME>): 実装を仕様に収束` |
+| S10 | レビュー 1 回目と修正 | speckit-coding | `fix(<FEATURE_NAME>): レビューの指摘を修正（1 回目）` |
+| S11 | レビュー 2 回目と修正 | speckit-coding | `fix(<FEATURE_NAME>): レビューの指摘を修正（2 回目）` |
+| S12 | 片付け（`finish`） | 3 スキル共通 | `merge(<FEATURE_NAME>): <phase>`（自動。進捗の判定に使うため、この形は変えない） |
 
 `checkpoint` はコミットに trailer `Speckit-Step: <step>` と `Speckit-Feature: <FEATURE_NAME>` を付ける。変更がないステップも空コミットで記録する。進捗は、`main` とブランチにあるこの trailer、`main` にマージ済みの `tasks.md`、`merge(<FEATURE_NAME>): coding|all` のマージコミットから判定する。フィーチャー名付きの trailer はマージの後も残るので、競合を手で解消してマージした後に `finish` を再実行しても進捗は失われない。
 
@@ -116,7 +118,7 @@ NEXT_STEP: S4
    - worktree の残りの変更をコミットする。
    - メインの作業ツリーに未コミットの変更がないことを確かめ、`main` に切り替える。
    - `git merge --no-ff -m "merge(<FEATURE_NAME>): <phase>"` でマージする。ブランチがすでにマージ済み（競合を手で解消した後など）なら、マージを飛ばして片付けだけを行う。
-   - worktree とブランチを削除する。
+   - worktree とブランチを削除する。worktree にあった無視対象のファイル（`.env` など）も一緒に消えるので、出力の `REMOVED_IGNORED` に挙がったものはユーザーに知らせる。
 2. マージで競合したときは、worktree とブランチが残る。競合の内容をユーザーに示し、解消方針を確認してから、メインの作業ツリーで解消してマージをコミットし、もう一度 `finish` を実行する。マージコミットのメッセージは `merge(<FEATURE_NAME>): <phase>` のままにする。
 
 ### 中止
@@ -143,6 +145,7 @@ NEXT_STEP: S4
 - 一覧にない新しいフィーチャーは、`001-short-name` の形の完全名で指定する。
 - 複数のフィーチャーは 1 件ずつ直列に進める。前のフィーチャーの S12（マージ）が終わってから、次のフィーチャーの S1 に進む。後続のフィーチャーは、先行フィーチャーの成果を含む最新の `main` から分岐する。
 - 範囲指定の途中で `ALREADY_SPECIFIED` や `ALREADY_IMPLEMENTED` になったフィーチャーは、飛ばしたことを記録して次に進む。それ以外の理由で止まったときは、飛ばして続けるか中断するかをユーザーに確認する。
+- `all` で飛ばしたフィーチャーは、以降の `next` に `--skip <飛ばしたもの,...>` を付けて除く（付けないと、途中の worktree が残っているフィーチャーがまた選ばれる）。
 
 ## 6. 手動での利用
 

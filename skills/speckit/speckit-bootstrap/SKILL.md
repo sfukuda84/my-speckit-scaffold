@@ -24,12 +24,12 @@ $ARGUMENTS
 | ステップ | 使うスキル | 完了の条件（成果物） | コミットの subject |
 |---|---|---|---|
 | B0 | （このスキル） | `docs/concept/` にコアコンセプトがある | （コミットなし） |
-| B1 | [`speckit-concept-2-feature`](../speckit-concept-2-feature/SKILL.md) | `docs/feature/` 一式（`premises.md`、`README.md`、`spec_order.md`、`001-*.md` 以降） | `docs(bootstrap): B1 concept to features` |
-| B2 | [`speckit-architecture`](../speckit-architecture/SKILL.md) | `docs/architecture.md` | `docs(bootstrap): B2 architecture` |
-| B3 | `speckit-constitution` | `.specify/memory/constitution.md`（テンプレートの `[PROJECT_NAME]` などが残っていない） | `docs(bootstrap): B3 constitution` |
-| B4 | [`speckit-common-feature`](../speckit-common-feature/SKILL.md) | `docs/feature/000-app-basic.md` | `docs(bootstrap): B4 common feature` |
-| B5 | [`speckit-nfr-feature`](../speckit-nfr-feature/SKILL.md) | `docs/nfr.md` と `docs/feature/999-app-nfr.md` | `docs(bootstrap): B5 non-functional requirements` |
-| B6 | （このスキル） | 検証のエラーが 0 件 | `docs(bootstrap): B6 validate` |
+| B1 | [`speckit-concept-2-feature`](../speckit-concept-2-feature/SKILL.md) | `docs/feature/` 一式（`premises.md`、`README.md`、`spec_order.md`、`001-*.md` 以降） | `docs(bootstrap): B1 コンセプトを機能に仕分け` |
+| B2 | [`speckit-architecture`](../speckit-architecture/SKILL.md) | `docs/architecture.md` | `docs(bootstrap): B2 アーキテクチャを選定` |
+| B3 | `speckit-constitution` | `.specify/memory/constitution.md`（テンプレートの `[PROJECT_NAME]` などが残っていない） | `docs(bootstrap): B3 憲章を作成` |
+| B4 | [`speckit-common-feature`](../speckit-common-feature/SKILL.md) | `docs/feature/000-app-basic.md` | `docs(bootstrap): B4 共通基盤を定義` |
+| B5 | [`speckit-nfr-feature`](../speckit-nfr-feature/SKILL.md) | `docs/nfr.md` と `docs/feature/999-app-nfr.md` | `docs(bootstrap): B5 非機能要件を定義` |
+| B6 | （このスキル） | 検証のエラーが 0 件 | `docs(bootstrap): B6 全体を検証` |
 
 ## 3. 進捗の記録と再開
 

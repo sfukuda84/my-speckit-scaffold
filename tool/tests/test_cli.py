@@ -85,6 +85,24 @@ class NewProjectTest(unittest.TestCase):
                               capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_scaffold_only_files_are_excluded_and_readme_note(self) -> None:
+        code, target = self.create("excl", "-m", "テスト")
+        self.assertEqual(code, 0)
+        self.assertFalse((target / ".github" / "workflows" / "scaffold-tests.yml").exists())
+        moved = (target / "docs" / "speckit-scaffold.md").read_text(encoding="utf-8")
+        self.assertTrue(moved.startswith("> この文書は、プロジェクトの作成に使った scaffold"))
+
+    def test_existing_empty_dir_is_cleared_on_failure(self) -> None:
+        """L9: 元から空だったディレクトリに作成して失敗したら、ディレクトリは残して中身を消す。"""
+        target = self.tmp / "empty-dir"
+        target.mkdir()
+        args = cli.build_parser().parse_args(
+            [str(target), "--repo", self.repo_url, "--ref", "no-such-branch", "--no-launch", "-m", "x"])
+        with self.assertRaises(cli.CliError):
+            cli.create_project(args)
+        self.assertTrue(target.is_dir())
+        self.assertEqual(list(target.iterdir()), [])
+
     def test_rejects_non_empty_target(self) -> None:
         target = self.tmp / "occupied"
         target.mkdir()
@@ -153,6 +171,14 @@ class ReadConceptTest(unittest.TestCase):
         self.assertEqual(cli.read_concept(None, None, stdin=io.StringIO("パイプ入力\n"), interactive=False),
                          "パイプ入力")
 
+    def test_concept_file_encodings(self) -> None:
+        """L9: BOM 付きの UTF-8 と cp932 のファイルも読める。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, data in (("bom.txt", "概要".encode("utf-8-sig")), ("sjis.txt", "概要".encode("cp932"))):
+                path = Path(tmp) / name
+                path.write_bytes(data)
+                self.assertEqual(cli.read_concept(None, str(path)), "概要")
+
     def test_empty_is_error(self) -> None:
         with self.assertRaises(cli.CliError):
             cli.read_concept(None, None, stdin=io.StringIO("\n\n"), interactive=True)
@@ -172,6 +198,9 @@ class AgentCommandTest(unittest.TestCase):
         codex = cli.agent_command("codex", root, self.which)
         self.assertEqual(codex[-1], "$speckit-bootstrap")
         self.assertIn("workspace-write", codex)
+        # M3: Web 検索とネットワークを有効にする
+        self.assertIn("--search", codex)
+        self.assertIn("sandbox_workspace_write.network_access=true", codex)
         self.assertTrue(any(a.startswith("sandbox_workspace_write.writable_roots=['") and a.endswith(".git']")
                             for a in codex))
 
@@ -179,8 +208,13 @@ class AgentCommandTest(unittest.TestCase):
         self.assertIsNone(cli.agent_command("claude", Path("."), lambda _n: None))
 
     def test_detect_python(self) -> None:
-        self.assertEqual(cli.detect_python(lambda n: "/x" if n == "python" else None), "python")
-        self.assertIsNone(cli.detect_python(lambda _n: None))
+        ok = lambda _exe: True  # noqa: E731
+        self.assertEqual(cli.detect_python(lambda n: "/x/python" if n == "python" else None, ok), "python")
+        self.assertEqual(cli.detect_python(lambda n: "/x/py" if n == "py" else None, ok), "py -3")
+        self.assertIsNone(cli.detect_python(lambda _n: None, ok))
+        # L10: 見つかっても動かない python3（Windows の Microsoft Store の代わりの実行ファイルなど）は使わない
+        self.assertEqual(cli.detect_python(lambda n: f"/x/{n}", lambda exe: not exe.endswith("python3")), "python")
+        self.assertTrue(cli._runs_python3(sys.executable))
 
 
 if __name__ == "__main__":

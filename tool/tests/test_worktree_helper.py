@@ -132,7 +132,10 @@ class WorktreeHelperScenario(unittest.TestCase):
         self.git("checkout", "-q", "-b", "other")
         # 未完了のタスクが残っているので、確認なしにはマージしない
         self.assertEqual(self.code("finish", "2", "--phase", "all"), 3)
-        self.assertIn("FINISHED: 002-sync (all)", self.out("finish", "2", "--phase", "all", "--allow-unchecked"))
+        # メインの作業ツリーが main 以外にいるので、確認なしには切り替えない
+        self.assertIn("NOT_ON_MAIN", self.out("finish", "2", "--phase", "all", "--allow-unchecked"))
+        self.assertIn("FINISHED: 002-sync (all)",
+                      self.out("finish", "2", "--phase", "all", "--allow-unchecked", "--switch"))
         self.assertEqual(self.git("branch", "--show-current"), "main")
         # 未完了のタスクが残っていても、実装までマージ済みなら完了として扱い、再び選ばない
         self.assertIn("| 002-sync | 完了 | 完了 | - |", self.out("status"))
@@ -207,6 +210,72 @@ class WorktreeHelperScenario(unittest.TestCase):
         self.checkpoints("1", "S3 S4 S5 S6 S7-1 S7-2 S7-3 S8 S9 S10 S11")
         self.assertIn("**状態**: 完了 |", (wt / "docs" / "feature" / "001-todo-cli.md").read_text(encoding="utf-8"))
         self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
+
+    def test_resolve_rejects_ranges_and_taken_numbers(self) -> None:
+        """M6: 範囲指定の文字列や、既存と番号が重なる完全名を新しいフィーチャーとして受け付けない。"""
+        self.assertIn("範囲指定", self.out("resolve", "002-005"))
+        self.assertIn("すでに 001-todo-cli", self.out("resolve", "001-todo-cl"))
+        self.assertEqual(self.out("resolve", "003-new-thing"), "003-new-thing")
+
+    def test_missing_main_branch(self) -> None:
+        """M7: 既定のブランチがなければ、黙って空を返さずにエラーにする。SPECKIT_MAIN_BRANCH で変えられる。"""
+        self.git("branch", "-m", "main", "master")
+        proc = self.run_helper("next", "--phase", "spec")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("SPECKIT_MAIN_BRANCH", proc.stderr)
+        env = {**self.env, "SPECKIT_MAIN_BRANCH": "master"}
+        proc = subprocess.run([sys.executable, str(HELPER), "next", "--phase", "spec"], cwd=self.repo, env=env,
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.stdout.strip(), "001-todo-cli")
+
+    def test_next_skip(self) -> None:
+        """M10: --skip で指定したフィーチャーを飛ばせる（途中の worktree も含む）。"""
+        self.out("ensure", "1", "--phase", "spec")
+        self.assertEqual(self.out("next", "--phase", "spec"), "001-todo-cli")
+        self.assertEqual(self.out("next", "--phase", "spec", "--skip", "1"), "002-sync")
+        self.assertEqual(self.out("next", "--phase", "spec", "--skip=001-todo-cli,002-sync"), "")
+
+    def test_separate_git_dir(self) -> None:
+        """M11: .git がファイルのリポジトリ（--separate-git-dir や submodule）でも動く。"""
+        repo2 = self.tmp / "sep"
+        subprocess.run(["git", "init", "-q", "-b", "main", "--separate-git-dir", str(self.tmp / "sep.git"), str(repo2)],
+                       check=True, env=self.env)
+        (repo2 / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
+        self.git("add", "-A", cwd=repo2)
+        self.git("commit", "-qm", "init", cwd=repo2)
+        proc = self.run_helper("ensure", "001-x", "--phase", "spec", cwd=repo2)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"REPO_ROOT: {repo2}", proc.stdout)
+        self.assertTrue((repo2 / ".worktrees" / "001-x").is_dir())
+
+    def test_finish_guards(self) -> None:
+        """L11・M5・L12: ステップの抜け、どのステップにも含まれない変更を止め、消える無視対象のファイルを知らせる。"""
+        self.out("ensure", "1", "--phase", "spec")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli")
+        self.checkpoints("1", "S2 S4 S5 S6 S7-1 S7-2 S7-3")  # S3 が抜けている
+        self.assertIn("未完了: S3", self.out("finish", "1", "--phase", "spec"))
+        self.checkpoints("1", "S3")
+        (wt / "debug.log.txt").write_text("x", encoding="utf-8")
+        self.assertIn("LEFTOVER_CHANGES", self.out("finish", "1", "--phase", "spec"))
+        self.assertEqual(self.git("status", "--porcelain", cwd=wt), "?? debug.log.txt")  # 止まった後もステージしない
+        (wt / "debug.log.txt").unlink()
+        (wt / ".worktrees-ignored").mkdir()
+        (self.repo / ".gitignore").write_text(".worktrees/\n.env\n", encoding="utf-8")
+        self.git("commit", "-qam", "ignore .env")
+        self.git("merge", "-q", "main", cwd=wt)
+        (wt / ".env").write_text("SECRET=1", encoding="utf-8")
+        out = self.out("finish", "1", "--phase", "spec")
+        self.assertIn("FINISHED: 001-todo-cli (spec)", out)
+        self.assertIn("REMOVED_IGNORED: .env", out)
+
+    def test_status_spec_done_unmerged(self) -> None:
+        """L7: 仕様工程を終えて未マージの worktree は「完了（未マージ）」と表示する。"""
+        self.out("ensure", "1", "--phase", "all")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli")
+        self.checkpoints("1", "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3")
+        self.assertIn("| 001-todo-cli | 完了（未マージ） | 未着手 |", self.out("status"))
 
     def test_gitignore_required(self) -> None:
         (self.repo / ".gitignore").write_text("", encoding="utf-8")

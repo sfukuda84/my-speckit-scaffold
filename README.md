@@ -106,6 +106,7 @@ new-speckit-project ~/work/my-app --agent codex        # 使うエージェン�
 │   ├── presentation/         # 企画書（speckit-presentation が作る）
 │   └── nfr.md                # 非機能要件（speckit-nfr-feature が作る）
 ├── specs/                    # フィーチャーごとの仕様・設計・タスク（Spec Kit の成果物）
+├── .github/workflows/        # scaffold 自体のテスト（新規プロジェクトには含まれない）
 └── tool/                     # new-speckit-project コマンドとテスト（新規プロジェクトには含まれない）
 ```
 
@@ -197,6 +198,13 @@ python3 $H next --phase all       # 次に着手すべきフィーチャー
 python3 $H abort 002              # 破棄する対象の確認（実際に破棄するには --yes）
 ```
 
+Windows の PowerShell では次のようになる。
+
+```powershell
+$H = ".claude\skills\speckit-worktree\scripts\worktree_helper.py"
+py -3 $H status
+```
+
 ## scaffold の更新
 
 - スキルを直すときは `skills/speckit/` のファイルを編集する。各エージェントのスキルディレクトリはシンボリックリンクなので、編集はすべてのエージェントに反映される。
@@ -208,11 +216,21 @@ python3 $H abort 002              # 破棄する対象の確認（実際に破�
   done
   ```
 
+  Windows の PowerShell では、開発者モードを有効にしたうえで次のようにする。
+
+  ```powershell
+  foreach ($d in ".claude\skills", ".agents\skills", ".kiro\skills") {
+    New-Item -ItemType SymbolicLink -Path "$d\<スキル名>" -Target "..\..\skills\speckit\<スキル名>"
+  }
+  ```
+
 - テストは `tool/` で実行する。worktree 管理のスクリプト、`validate.py`、`plan.py`、`build_pptx.py`、`new-speckit-project` のテストが含まれる。pptx の生成のテストは python-pptx があるときだけ動くので、uv で依存を足して実行する。
 
   ```bash
   cd tool && uv run --no-project --with python-pptx --with pyyaml python -m unittest discover -s tests
   ```
+
+  GitHub に push すると、`.github/workflows/scaffold-tests.yml` が Ubuntu、macOS、Windows と Python 3.9、3.12 の組み合わせで同じテストを実行する。このワークフローは scaffold の開発用なので、`new-speckit-project` は新規プロジェクトに持ち込まない。
 - **このリポジトリでも、作成したプロジェクトでも、次の Specify CLI のコマンドを実行しない。** スキルがシンボリックリンクのため、リンク先の `skills/speckit/` がエージェント固有の内容で上書きされる。
   - `specify init --here --force`
   - `specify integration install` / `upgrade` / `switch` / `uninstall`（`uninstall` は共有スキルの実体まで消すおそれがある）
@@ -223,10 +241,12 @@ python3 $H abort 002              # 破棄する対象の確認（実際に破�
 
 ## 注意点
 
-- **Codex CLI**: 標準のサンドボックス（`workspace-write`）では `.git` が読み取り専用になり、コミットやブランチの作成ができない。`new-speckit-project` は、サンドボックスを保ったまま `.git` だけを書き込み可能にして起動する。手動で起動するときは、次のように指定する。
+- **Codex CLI**: 標準のサンドボックス（`workspace-write`）では、`.git` が読み取り専用になり、ネットワークも使えない。そのため、コミットやブランチの作成、出典付きの Web 調査、依存パッケージの取得ができない。`new-speckit-project` は、サンドボックスを保ったまま、`.git` への書き込み、Web 検索、ネットワークを有効にして起動する。手動で起動するときは、次のように指定する。
 
   ```bash
-  codex --sandbox workspace-write -c "sandbox_workspace_write.writable_roots=['$(pwd)/.git']"
+  codex --sandbox workspace-write --search \
+    -c "sandbox_workspace_write.writable_roots=['$(pwd)/.git']" \
+    -c "sandbox_workspace_write.network_access=true"
   ```
 
 - **Windows**: Git と Python があれば、bash なしで動く。
@@ -235,3 +255,4 @@ python3 $H abort 002              # 破棄する対象の確認（実際に破�
   - 各エージェントの CLI が Windows に対応しているかは、それぞれの CLI による。
 - **opencode**: `.claude/skills/` と `.agents/skills/` の両方から同じスキルを読み込むため、起動時に `duplicate skill name` の警告が出る。動作には影響しない。
 - **`.worktrees/`**: `.gitignore` で除外している。除外を外すと、worktree 管理のスクリプトが S1 で止まる。
+- **既定のブランチ**: スクリプトは既定のブランチを `main` とみなす。別の名前のリポジトリで使うときは、環境変数 `SPECKIT_MAIN_BRANCH` にその名前を指定する。

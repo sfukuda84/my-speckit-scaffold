@@ -30,7 +30,7 @@ concept 側の記述と食い違う場合は、ここの回答が新しい決定
 
 ## 前提とした共通標準（機能にしないもの）
 
-- <例: 認証方式（Email + Password / Magic Link / Google OAuth / Passkey）— architecture.md §4、platform-core packages/auth>
+- <例: 認証方式（Email + Password / Magic Link / Google OAuth / Passkey）— docs/architecture.md の認証の節、または共通基盤のパッケージ>
 
 ## 共通基盤の候補（000-app-basic に渡すもの）
 
