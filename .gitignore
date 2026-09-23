@@ -1,0 +1,63 @@
+# ===== OS =====
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*~
+
+# ===== エディタ / IDE =====
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+.history/
+
+# ===== 環境変数・シークレット =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ===== ログ・一時ファイル =====
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+*.bak
+
+# ===== 依存関係・ビルド成果物 =====
+node_modules/
+.pnpm-store/
+dist/
+build/
+out/
+coverage/
+.cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+target/
+
+# ===== Spec Kit（speckit-worktree の作業ツリー） =====
+.worktrees/
+
+# ===== AI エージェント（個人設定・ローカル状態） =====
+# 共有するもの: CLAUDE.md, AGENTS.md, GEMINI.md, opencode.json, .claude/skills/, .agents/skills/, .kiro/skills/, .kiro/steering/, .opencode/commands/
+.claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
+.gemini/.env
