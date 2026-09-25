@@ -1,7 +1,7 @@
 ---
 name: "speckit-coding"
 description: "フィーチャーの実装工程を実行するスキル。Git worktree の準備（既存があれば再利用して続きから再開）、実装（speckit-implement）、仕様収束（speckit-converge）、2 軸コードレビュー（speckit-review）と修正、再レビューと修正を行い、main へのマージと後片付けまでを実行する。spec.md・plan.md・tasks.md が必要で、なければ speckit-feature を案内する。"
-argument-hint: "フィーチャー番号または範囲（例: 001, 002, 002-005, all, または省略して次の未実装）"
+argument-hint: "フィーチャー番号または範囲と、任意の --auto（例: 001, 002-005, all, all --auto, または省略して次の未実装）"
 compatibility: "Requires git, spec-kit project structure with .specify/ directory"
 user-invocable: true
 disable-model-invocation: false
@@ -21,7 +21,7 @@ disable-model-invocation: false
 $ARGUMENTS
 ```
 
-引数の解釈と複数フィーチャーの進め方は `speckit-worktree` の §5 に従う。自動検出では `--phase coding` を使い、`main` の `tasks.md` に未完了のタスク（`- [ ]`）が残っているフィーチャーを対象にする。
+引数の解釈と複数フィーチャーの進め方は `speckit-worktree` の §5 に従う。`--auto` があるときは、下の 💬 の質問も含めて `speckit-worktree` §6 の自動モードで進める。自動検出では `--phase coding` を使い、`main` の `tasks.md` に未完了のタスク（`- [ ]`）が残っているフィーチャーを対象にする。
 
 ## 2. 実行の流れ（単独実行）
 
@@ -96,4 +96,5 @@ S10 の修正が既存のロジックを壊していないか、新たな不整�
 - converge の検証結果（追加したタスクがあればその内容）
 - レビュー 2 回で見つかって直した指摘
 - 飛ばした、または中断したフィーチャーとその理由
+- `--auto` のとき: 自動で採用した判断の要約（`auto-decisions.md`）と、止まったフィーチャーについてユーザーに判断してほしい事項
 - 次の案内: `$HELPER next --phase coding` の結果（実装が未完了のフィーチャー）

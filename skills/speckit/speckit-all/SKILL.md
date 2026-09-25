@@ -1,7 +1,7 @@
 ---
 name: "speckit-all"
-description: "フィーチャーの仕様工程と実装工程を 1 つの Git worktree で通して実行するスキル。worktree の準備（既存があれば再利用して続きから再開）、speckit-feature の仕様工程（specify・clarify x 2・plan・tasks・analyze x 3）、speckit-coding の実装工程（implement・converge・2 軸レビュー x 2）を途中でマージせずに続けて行い、最後に main へのマージと後片付けを行う。"
-argument-hint: "フィーチャー番号または範囲（例: 001, 002, 002-005, all, または省略して次の未完了）"
+description: "フィーチャーの仕様工程と実装工程を 1 つの Git worktree で通して実行するスキル。worktree の準備（既存があれば再利用して続きから再開）、speckit-feature の仕様工程（specify・clarify x 2・plan・tasks・analyze x 3）、speckit-coding の実装工程（implement・converge・2 軸レビュー x 2）を途中でマージせずに続けて行い、最後に main へのマージと後片付けを行う。--auto を付けると、質問せずに推奨案を採用して進める。"
+argument-hint: "フィーチャー番号または範囲と、任意の --auto（例: 001, 002-005, all, all --auto, または省略して次の未完了）"
 compatibility: "Requires git, spec-kit project structure with .specify/ directory"
 user-invocable: true
 disable-model-invocation: false
@@ -23,6 +23,8 @@ $ARGUMENTS
 ```
 
 引数の解釈と複数フィーチャーの進め方は `speckit-worktree` の §5 に従う。自動検出では `--phase all` を使う。
+
+引数に `--auto` があるときは、仕様工程から実装工程、S12 までのすべての質問を `speckit-worktree` §6 の自動モードで扱う。`speckit-feature` と `speckit-coding` の本文にある 💬 の質問も、質問せずに推奨案を採用する。自動モードでも止まる場面（マージの競合など）では、§6「止まったときの扱い」に従う。
 
 ## 2. 実行の流れ
 
@@ -47,4 +49,5 @@ $ARGUMENTS
 - 仕様工程の要約（clarify で確定した決定事項、analyze の検証結果）
 - 実装工程の要約（実装内容、テスト結果、converge の結果、レビューで直した指摘）
 - 飛ばした、または中断したフィーチャーとその理由
+- `--auto` のとき: 自動で採用した判断の要約（`auto-decisions.md`）と、止まったフィーチャーについてユーザーに判断してほしい事項
 - 次の案内: `$HELPER next --phase all` の結果

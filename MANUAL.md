@@ -137,8 +137,16 @@ new-speckit-project ~/work/my-app -m "小規模な美容室向けの予約管理
 | 番号 | `/speckit-all 3` または `/speckit-all 003` | その 1 件 |
 | 範囲 | `/speckit-all 002-005` | 範囲内を 1 件ずつ順に |
 | すべて | `/speckit-all all` | 残りをすべて 1 件ずつ順に |
+| 自動 | `/speckit-all all --auto` | 上と組み合わせる。質問せずに、エージェントの推奨案を採用して進める |
 
 着手の順番は `docs/feature/spec_order.md` の並び順に従う。
+
+### 自動モード（`--auto`）
+
+`--auto` を付けると、clarify の質問、設計判断、レビュー指摘の対応方針などを質問せずに、エージェントが示す推奨案を採用して進める。`speckit-feature` と `speckit-coding` でも使える。
+
+- 自動で決めたことは、機能ごとに `specs/<番号-名前>/auto-decisions.md` に記録される。clarify の回答には `(auto)` の印が付く。終わったら一覧を見直し、変えたいものは `/speckit-clarify` などで直す。
+- マージの競合、中止、憲章やアーキテクチャの変更が必要な場合、テストが直らない場合などは、自動モードでも止まる。範囲指定や `all` では、止まった機能（とそれに依存する機能）を飛ばして次に進み、最後に判断してほしい事項を報告する。判断した後にもう一度実行すれば、続きから再開する。
 
 ### 作業の場所
 
@@ -439,7 +447,7 @@ new-speckit-project update                   # 取り込んで、1 つのコミ�
 | スキル | 用途 |
 |---|---|
 | `/speckit-bootstrap` | 立ち上げ（機能、構成、憲章、共通基盤、非機能要件） |
-| `/speckit-all [番号 \| 範囲 \| all]` | 仕様化から実装、マージまで |
+| `/speckit-all [番号 \| 範囲 \| all] [--auto]` | 仕様化から実装、マージまで（`--auto` で質問せずに推奨案を採用） |
 | `/speckit-feature [番号 \| 範囲 \| all]` | 仕様化まで |
 | `/speckit-coding [番号 \| 範囲 \| all]` | 実装から |
 | `/speckit-project` | 事業計画 |
