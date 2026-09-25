@@ -40,6 +40,7 @@ uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirecto
 new-speckit-project ~/work/my-app                      # コアコンセプトを対話で入力する
 new-speckit-project ~/work/my-app -m "コアコンセプト"   # 入力を省く
 new-speckit-project ~/work/my-app --agent codex        # 使うエージェントを選ぶ（既定は claude）
+new-speckit-project ~/work/my-app -m "…" --auto        # 立ち上げを質問なしで進める（--oneshot は最初に一度だけ質問する）
 ```
 
 コマンドは次を行う。
@@ -56,6 +57,8 @@ new-speckit-project ~/work/my-app --agent codex        # 使うエージェン�
 ### 3. 立ち上げ（speckit-bootstrap）
 
 エージェントとの対話で、次の順に作る。各ステップが終わるとコミットされ、中断しても `speckit-bootstrap` を再実行すれば続きから再開できる。
+
+`--auto` を付けると、質問せずにエージェントの推奨案を採用して進める。`--oneshot` を付けると、最初に一度だけ、予算や MVP の範囲など影響の大きい論点をまとめて質問し、以降は自動で進める。どちらも、自動で決めたことを仮定として `docs/auto-decisions.md` に記録する。
 
 | ステップ | スキル | 成果物 |
 |---|---|---|

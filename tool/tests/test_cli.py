@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import os
 import shutil
@@ -206,6 +207,24 @@ class AgentCommandTest(unittest.TestCase):
         self.assertIn("sandbox_workspace_write.network_access=true", codex)
         self.assertTrue(any(a.startswith("sandbox_workspace_write.writable_roots=['") and a.endswith(".git']")
                             for a in codex))
+
+    def test_commands_with_mode(self) -> None:
+        root = Path("/tmp/proj")
+        self.assertEqual(cli.agent_command("claude", root, self.which, mode="auto"),
+                         ["/bin/claude", "/speckit-bootstrap --auto"])
+        self.assertEqual(cli.agent_command("agy", root, self.which, mode="oneshot")[-1], "/speckit-bootstrap --oneshot")
+        self.assertEqual(cli.agent_command("codex", root, self.which, mode="auto")[-1], "$speckit-bootstrap --auto")
+        self.assertIn("--oneshot", cli.agent_command("kiro", root, self.which, mode="oneshot")[-1])
+        self.assertIn("--auto", cli.agent_command("opencode", root, self.which, mode="auto")[-1])
+        self.assertIn("/speckit-bootstrap --oneshot", cli.manual_invocation("claude", "oneshot"))
+
+    def test_mode_options(self) -> None:
+        parser = cli.build_parser()
+        self.assertEqual(parser.parse_args(["p"]).mode, "")
+        self.assertEqual(parser.parse_args(["p", "--auto"]).mode, "auto")
+        self.assertEqual(parser.parse_args(["p", "--oneshot"]).mode, "oneshot")
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["p", "--auto", "--oneshot"])
 
     def test_missing_cli(self) -> None:
         self.assertIsNone(cli.agent_command("claude", Path("."), lambda _n: None))

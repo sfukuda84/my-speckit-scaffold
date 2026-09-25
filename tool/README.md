@@ -13,7 +13,7 @@ uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirecto
 ## 使い方
 
 ```bash
-new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <ファイル>] [--agent claude|codex|agy|kiro|opencode]
+new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <ファイル>] [--agent claude|codex|agy|kiro|opencode] [--auto | --oneshot]
 ```
 
 | オプション | 内容 |
@@ -23,6 +23,8 @@ new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <�
 | `--agent` | 立ち上げに使うエージェント（既定: `claude`） |
 | `--ref` | scaffold のブランチまたはタグ（既定: `main`。環境変数 `SPECKIT_SCAFFOLD_REF` でも指定できる） |
 | `--repo` | scaffold の Git リポジトリ（環境変数 `SPECKIT_SCAFFOLD_REPO` でも指定できる） |
+| `--auto` | 立ち上げで質問せず、エージェントの推奨案を採用して進める（`speckit-bootstrap --auto` で起動する） |
+| `--oneshot` | 立ち上げの最初に一度だけ、予算や MVP の範囲などをまとめて質問し、以降は自動で進める（`speckit-bootstrap --oneshot` で起動する） |
 | `--no-launch` | エージェントを起動せず、手順の案内だけを表示する |
 
 ## 作成済みのプロジェクトを更新する

@@ -117,6 +117,19 @@ new-speckit-project ~/work/my-app -m "小規模な美容室向けの予約管理
 | B6 検証 | 全体の食い違いがないか確かめる | — | — |
 
 - ステップごとにコミットされるので、途中でやめても `/speckit-bootstrap` を再実行すれば続きから始まる。
+
+### 質問を減らす（`--auto` / `--oneshot`）
+
+| 指定 | 例 | 動き |
+|---|---|---|
+| なし | `/speckit-bootstrap` | 上の表の質問に、ステップごとに答える |
+| `--oneshot` | `/speckit-bootstrap --oneshot` | 最初に一度だけ、予算、クラウドと言語の希望、MVP の範囲、課金などのうち、コンセプトに書いていないものを最大 4 問まとめて聞く。以降は質問せずに進める |
+| `--auto` | `/speckit-bootstrap --auto` | 一度も質問せず、エージェントの推奨案を採用して最後まで進める |
+
+- `new-speckit-project` に `--auto` か `--oneshot` を付けると、そのモードで立ち上げが始まる。
+- 自動で決めたことは仮定として `docs/auto-decisions.md` に記録される。見直しの優先度が「高」のもの（予算、課金、MVP の範囲、アーキテクチャなど）は、必ず見直す。変えるときは、記録にあるスキル（`speckit-architecture` など）の更新モードを使う。
+- 前提をコンセプトに書いておくほど、推奨案は的確になる。`--auto` でも、`/speckit-bootstrap --auto 予算は月 1 万円まで、AWS を使いたい` のように引数で足せる。
+- ブランチが `main` でない場合や、検証のエラーが直らない場合は、自動でも止まる。対処してから再実行すれば続きから始まる。
 - 番号 `000` は共通基盤、`999` は運用基盤の予約番号で、コアの機能は `001` から振られる。
 
 ## 5. 仕様化と実装（speckit-all / speckit-feature / speckit-coding）
@@ -439,14 +452,14 @@ new-speckit-project update                   # 取り込んで、1 つのコミ�
 |---|---|
 | `uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirectory=tool"` | コマンドを入れる |
 | `uv tool upgrade new-speckit-project` | コマンドを更新する |
-| `new-speckit-project <ディレクトリ> [-m "コンセプト"] [--agent <名前>] [--no-launch]` | プロジェクトを作る |
+| `new-speckit-project <ディレクトリ> [-m "コンセプト"] [--agent <名前>] [--auto \| --oneshot] [--no-launch]` | プロジェクトを作る |
 | `new-speckit-project update [プロジェクト] [--dry-run]` | 作成済みのプロジェクトに scaffold の更新を取り込む |
 
 ### スキル（Claude Code の書き方）
 
 | スキル | 用途 |
 |---|---|
-| `/speckit-bootstrap` | 立ち上げ（機能、構成、憲章、共通基盤、非機能要件） |
+| `/speckit-bootstrap [--auto \| --oneshot]` | 立ち上げ（機能、構成、憲章、共通基盤、非機能要件） |
 | `/speckit-all [番号 \| 範囲 \| all] [--auto]` | 仕様化から実装、マージまで（`--auto` で質問せずに推奨案を採用） |
 | `/speckit-feature [番号 \| 範囲 \| all]` | 仕様化まで |
 | `/speckit-coding [番号 \| 範囲 \| all]` | 実装から |

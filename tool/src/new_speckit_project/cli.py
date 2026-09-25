@@ -4,7 +4,7 @@
   C1 scaffold を GitHub から clone し、tool/ と scaffold の履歴を取り除く
   C2 スキルのシンボリックリンクを確かめる（作れない環境では実体のコピーに切り替える）
   C3 コアコンセプトを docs/concept/core-concept.md に保存し、git init と初回コミットを行う
-  C4 指定のエージェントを対話モードで起動し、speckit-bootstrap を渡す
+  C4 指定のエージェントを対話モードで起動し、speckit-bootstrap を渡す（--auto / --oneshot はそのまま引き継ぐ）
 
 macOS / Linux / Windows で動くように、標準ライブラリだけで書く（Python 3.9 以上）。
 """
@@ -43,7 +43,7 @@ class CliError(Exception):
 
 # --- エージェントの起動方法 ---------------------------------------------------
 
-def _codex_command(exe: str, root: Path) -> list[str]:
+def _codex_command(exe: str, root: Path, mode: str) -> list[str]:
     # workspace-write のサンドボックスでは .git が読み取り専用になり、コミットやブランチの作成ができない。
     # サンドボックスは保ったまま、.git だけを書き込み可能にする（TOML のリテラル文字列で Windows のパスも扱う）。
     # 立ち上げのスキルは出典付きの Web 調査を行い、実装では依存パッケージを取得するので、Web 検索とネットワークも有効にする。
@@ -51,33 +51,52 @@ def _codex_command(exe: str, root: Path) -> list[str]:
     return [exe, "--sandbox", "workspace-write", "--search",
             "-c", f"sandbox_workspace_write.writable_roots=['{git_dir}']",
             "-c", "sandbox_workspace_write.network_access=true",
-            "$speckit-bootstrap"]
+            _invoke("$speckit-bootstrap", mode)]
 
 
 NATURAL_PROMPT = "speckit-bootstrap スキルを使って、このプロジェクトの立ち上げを進めてください。"
+# speckit-bootstrap の実行モード。"" は対話、"auto" は質問なしで推奨案を採用、"oneshot" は最初に一度だけまとめて質問する。
+MODES = ("auto", "oneshot")
 
-AGENTS: dict[str, tuple[str, Callable[[str, Path], list[str]]]] = {
-    "claude": ("claude", lambda exe, root: [exe, "/speckit-bootstrap"]),
+
+def _invoke(skill: str, mode: str) -> str:
+    """スキルの呼び出し文字列（例: "/speckit-bootstrap --auto"）。"""
+    return f"{skill} --{mode}" if mode else skill
+
+
+def natural_prompt(mode: str) -> str:
+    """スラッシュコマンドのないエージェントに渡す依頼文。"""
+    if not mode:
+        return NATURAL_PROMPT
+    return f"speckit-bootstrap スキルを --{mode} モードで使って、このプロジェクトの立ち上げを進めてください。"
+
+
+AGENTS: dict[str, tuple[str, Callable[[str, Path, str], list[str]]]] = {
+    "claude": ("claude", lambda exe, root, mode: [exe, _invoke("/speckit-bootstrap", mode)]),
     "codex": ("codex", _codex_command),
-    "agy": ("agy", lambda exe, root: [exe, "--prompt-interactive", "/speckit-bootstrap"]),
-    "kiro": ("kiro-cli", lambda exe, root: [exe, "chat", NATURAL_PROMPT]),
-    "opencode": ("opencode", lambda exe, root: [exe, "--prompt", NATURAL_PROMPT]),
-}
-
-MANUAL_INVOCATION = {
-    "claude": "claude を起動して /speckit-bootstrap",
-    "codex": "codex を起動して $speckit-bootstrap（.git への書き込み、Web 検索、ネットワークを許可すること）",
-    "agy": "agy を起動して /speckit-bootstrap",
-    "kiro": f"kiro-cli chat を起動して「{NATURAL_PROMPT}」",
-    "opencode": f"opencode を起動して「{NATURAL_PROMPT}」",
+    "agy": ("agy", lambda exe, root, mode: [exe, "--prompt-interactive", _invoke("/speckit-bootstrap", mode)]),
+    "kiro": ("kiro-cli", lambda exe, root, mode: [exe, "chat", natural_prompt(mode)]),
+    "opencode": ("opencode", lambda exe, root, mode: [exe, "--prompt", natural_prompt(mode)]),
 }
 
 
-def agent_command(agent: str, root: Path, which: Callable[[str], str | None] = shutil.which) -> list[str] | None:
+def manual_invocation(agent: str, mode: str = "") -> str:
+    """エージェントを起動しなかったときに案内する、手動での始め方。"""
+    return {
+        "claude": f"claude を起動して {_invoke('/speckit-bootstrap', mode)}",
+        "codex": f"codex を起動して {_invoke('$speckit-bootstrap', mode)}（.git への書き込み、Web 検索、ネットワークを許可すること）",
+        "agy": f"agy を起動して {_invoke('/speckit-bootstrap', mode)}",
+        "kiro": f"kiro-cli chat を起動して「{natural_prompt(mode)}」",
+        "opencode": f"opencode を起動して「{natural_prompt(mode)}」",
+    }[agent]
+
+
+def agent_command(agent: str, root: Path, which: Callable[[str], str | None] = shutil.which,
+                  mode: str = "") -> list[str] | None:
     """エージェントの起動コマンド。CLI が見つからなければ None。"""
     name, build = AGENTS[agent]
     exe = which(name)
-    return build(exe, root) if exe else None
+    return build(exe, root, mode) if exe else None
 
 
 # --- 小さな道具 -----------------------------------------------------------------
@@ -319,16 +338,17 @@ def init_repository(root: Path, repo: str, ref: str, sha: str) -> None:
 
 # --- C4: エージェントの起動 -------------------------------------------------------
 
-def launch_agent(agent: str, root: Path, no_launch: bool) -> int:
-    command = None if no_launch else agent_command(agent, root)
+def launch_agent(agent: str, root: Path, no_launch: bool, mode: str = "") -> int:
+    command = None if no_launch else agent_command(agent, root, mode=mode)
     if command is None:
         if not no_launch:
             info(f"警告: {AGENTS[agent][0]} が見つからないため、エージェントを起動しませんでした。")
         info("次の手順で立ち上げを始めてください:")
         info(f"  cd {root}")
-        info(f"  {MANUAL_INVOCATION[agent]}")
+        info(f"  {manual_invocation(agent, mode)}")
         return 0
-    info(f"==> {AGENTS[agent][0]} を起動し、speckit-bootstrap を始めます。")
+    label = f"（--{mode}）" if mode else ""
+    info(f"==> {AGENTS[agent][0]} を起動し、speckit-bootstrap{label} を始めます。")
     return subprocess.call(command, cwd=str(root))
 
 
@@ -350,6 +370,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"scaffold のブランチまたはタグ（既定: {DEFAULT_REF}）")
     parser.add_argument("--repo", default=os.environ.get("SPECKIT_SCAFFOLD_REPO", DEFAULT_REPO),
                         help="scaffold の Git リポジトリ（既定: my-speckit-scaffold の GitHub）")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--auto", dest="mode", action="store_const", const="auto", default="",
+                      help="立ち上げで質問せず、エージェントの推奨案を採用して進める（speckit-bootstrap --auto）")
+    mode.add_argument("--oneshot", dest="mode", action="store_const", const="oneshot",
+                      help="立ち上げの最初に一度だけまとめて質問し、以降は自動で進める（speckit-bootstrap --oneshot）")
     parser.add_argument("--no-launch", action="store_true", help="エージェントを起動せず、手順の案内だけを表示する")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
@@ -385,7 +410,7 @@ def create_project(args: argparse.Namespace, stdin=None) -> int:
         info("警告: Python が見つかりません。Spec Kit とスキルのスクリプトには Python 3.9 以上が必要です。")
     elif python != "python3":
         info(f"注意: python3 が使えないため、スキルのスクリプトは {python} で実行されます（steering に読み替えのルールがあります）。")
-    return launch_agent(args.agent, target, args.no_launch)
+    return launch_agent(args.agent, target, args.no_launch, args.mode)
 
 
 def build_update_parser() -> argparse.ArgumentParser:

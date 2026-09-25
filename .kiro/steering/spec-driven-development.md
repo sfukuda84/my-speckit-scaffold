@@ -11,7 +11,7 @@ inclusion: always
 1. **仕様が先、コードが後**: 新機能や振る舞いの変更は、必ず `spec.md` → `plan.md` → `tasks.md` の順に成果物を作ってから実装する。
 2. **憲章（constitution）が最上位**: `.specify/memory/constitution.md` をすべての判断の基準とする。計画や実装が憲章と矛盾する場合は、先に憲章との整合を取る。
 3. **仕様は「何を・なぜ」、計画は「どう作るか」**: `spec.md` には技術スタックや実装詳細を書かず、ユーザー価値と要件に集中する。技術的な選択は `plan.md` に書く。
-4. **曖昧さは推測で埋めない**: 不明点は `[NEEDS CLARIFICATION: ...]` として明示し、`/speckit-clarify` やユーザーへの確認で解消する。`speckit-feature`・`speckit-coding`・`speckit-all` の自動モード（`--auto`）では、推奨案を明示して採用し、`auto-decisions.md` に記録することで確認に代える（`speckit-worktree` の §6）。
+4. **曖昧さは推測で埋めない**: 不明点は `[NEEDS CLARIFICATION: ...]` として明示し、`/speckit-clarify` やユーザーへの確認で解消する。`speckit-feature`・`speckit-coding`・`speckit-all` の自動モード（`--auto`）と、`speckit-bootstrap` の自動モード（`--auto`、`--oneshot`）では、推奨案を明示して採用し、`auto-decisions.md` に記録することで確認に代える（`speckit-worktree` の §6、`speckit-bootstrap` の §7）。
 5. **成果物と実装を同期させる**: 実装中に仕様の誤りや不足が見つかったら、コードだけを直さず `spec.md` / `plan.md` / `tasks.md` にも反映する。
 6. **アーキテクチャと非機能要件に従う**: 各機能の `plan.md` は `docs/architecture.md`（構成と技術スタック）と `docs/nfr.md`（全機能が守る非機能要件）に従う。これらと違う技術や目標が必要になった場合は、`plan.md` で独自に決めず、`speckit-architecture` や `speckit-nfr-feature` の更新モードで先に見直す。
 
@@ -52,7 +52,7 @@ inclusion: always
 
 | スキル | 目的 |
 |---|---|
-| `speckit-bootstrap` | 新規プロジェクトの立ち上げ（上の順）を通しで行う。ステップごとにコミットし、中断しても続きから再開できる |
+| `speckit-bootstrap` | 新規プロジェクトの立ち上げ（上の順）を通しで行う。ステップごとにコミットし、中断しても続きから再開できる。`--auto` で質問なし、`--oneshot` で最初に一度だけ質問して進める |
 | `speckit-architecture` | 機能一覧を実現するアーキテクチャと技術スタックを、SaaS/PaaS・クラウド・VPS の 3 系統の比較から選び、`docs/architecture.md` に書く |
 | `speckit-common-feature` | 認証やメール送信など、コアドメイン以外の共通機能を `docs/feature/000-app-basic.md` に定義する |
 | `speckit-nfr-feature` | 全機能が守る非機能要件を `docs/nfr.md` に、監視・バックアップ・CI/CD などの運用基盤を `docs/feature/999-app-nfr.md` に定義する |
