@@ -65,7 +65,7 @@ inclusion: always
 | `speckit-worktree` | 上の 3 スキルが使う worktree 管理と共通の実行規則。進捗の確認（`status`）、残っている人のタスクの確認（`human-tasks`）、状態の同期（`sync-status`）、中止（`abort`）にも使う |
 | `speckit-review` | Standards 軸と Spec 軸の 2 軸でコード変更をレビューする |
 
-`speckit-feature`、`speckit-coding`、`speckit-all` は、フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップごとにコミットして進捗を記録する。中断しても、どのスキルからでも続きのステップから再開できる。worktree で作業している間は、Spec Kit のスキルが「リポジトリのルート（repo root）」と書いている箇所を worktree のディレクトリに読み替える。既定のブランチが `main` 以外なら、環境変数 `SPECKIT_MAIN_BRANCH` にその名前を指定する。
+`speckit-feature`、`speckit-coding`、`speckit-all` は、フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップごとにコミットして進捗を記録する。中断しても、どのスキルからでも続きのステップから再開できる。worktree で作業している間は、Spec Kit のスキルが「リポジトリのルート（repo root）」と書いている箇所を worktree のディレクトリに読み替える。既定のブランチが `main` 以外なら、環境変数 `SPECKIT_MAIN_BRANCH` にその名前を指定する。Claude Code のクラウドセッションでは、マージ先がセッションの作業ブランチになる（下の「Claude Code のクラウドセッション」）。
 
 ## エージェントの行動規範
 
@@ -90,6 +90,27 @@ inclusion: always
 - `speckit-converge`、`speckit-analyze`、`speckit-review` は、未完了の `[人]` のタスクを実装漏れや不整合として扱わない。そのタスクと重なる新しいタスクも足さない。
 - `[人]` のタスクだけが残ったフィーチャーは、`speckit-coding` と `speckit-all` の最後に `main` にマージしてよい。機能ファイルの状態は `人の作業待ち` になる。残りは `main` で片付け、`speckit-worktree` の `sync-status` で状態を `完了` にする（`speckit-worktree` の §3「人のタスクの片付け」）。
 - AI は、秘密情報の値を読んだり出力したりしない。設定を確かめるときは、値が設定されているかどうかだけを見る。
+
+### Claude Code のクラウドセッション
+
+環境変数 `CLAUDE_CODE_REMOTE` が `true` のときは、Claude Code のクラウドセッション（claude.ai/code、`claude --cloud`）で動いている。この節は、そのときだけ当てはまる。`CLAUDE_CODE_REMOTE` が `true` でなければ（ローカルや、ほかのエージェント）、この節は読み飛ばし、これまでどおりに動く。
+
+クラウドセッションには、ローカルにない次の制約がある。
+
+- push できるのは、セッションの作業ブランチ（`claude/...` など）だけである。`main` や `feature/*` には push できない。
+- VM は、しばらく操作がないと回収される。会話は戻るが、push していないコミット、ローカルのブランチ、`.worktrees/` は戻らない。
+- 待機した後に質問へ回答すると、回答が効かないことがある（不具合の報告がある）。
+- WebFetch がネットワークの設定で止められることがある（報告がある）。WebSearch は使える。
+
+そのため、次のように動く。
+
+- **マージ先**: `speckit-feature`・`speckit-coding`・`speckit-all` は、`SPECKIT_MAIN_BRANCH` がなければ、セッションの作業ブランチをマージ先にする。スキルの本文の `main` は、その作業ブランチに読み替える。`worktree_helper.py` がこれを自動で判定し、`finish` の後に作業ブランチを push する。`main` へは PR で取り込む。`main` に切り替えたり（`--switch`）、`main` に直接 push したりしない。
+- **push**: 作業ブランチにコミットしたら、そのたびに作業ブランチを push し、VM が回収されても成果が残るようにする（`speckit-bootstrap` のステップごとのコミットなど）。
+- **中断と再開**: `feature/*` のブランチは push できないので、1 つのフィーチャーは 1 つのセッションで `finish` まで進める。複数のフィーチャーを進めるときも、1 件ずつ `finish` して作業ブランチに取り込む。
+- **質問**: `--auto` か `--oneshot` で進めることを勧める。対話で進めるときは、ユーザーがすぐに答えられないと、回答が失われるおそれがあることを先に伝える。
+- **Web 調査**: WebFetch が失敗したら、WebSearch の結果で進める。ページを開けなかった出典は、その旨を書く。数字を推測で埋めない。
+- **push できない変更**: `.github/workflows/` の下を変えるコミットは、push を拒否されることがある（報告がある）。拒否されたら、その変更を `[人]` のタスクに分け、ローカルで反映するよう案内する。
+- **新規プロジェクト**: `new-speckit-project` はローカルで実行するコマンドである。`--cloud <owner>/<name>` を付けると、GitHub にリポジトリを作って push し、クラウドセッションで立ち上げを始める。
 
 ## ディレクトリ構成
 

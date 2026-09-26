@@ -17,7 +17,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-MAIN_BRANCH = os.environ.get("SPECKIT_MAIN_BRANCH", "main")
+# マージ先のブランチ。main() で resolve_main_branch() の結果に置き換える（ローカルでは従来どおり main）。
+MAIN_BRANCH = os.environ.get("SPECKIT_MAIN_BRANCH") or "main"
+# Claude Code のクラウドセッション（VM 内では CLAUDE_CODE_REMOTE=true）。push できるのはセッションの作業ブランチだけで、
+# VM は回収されると消えるため、マージ先を作業ブランチにし、マージ後に push する。
+CLOUD_SESSION = os.environ.get("CLAUDE_CODE_REMOTE") == "true"
 SPEC_STEPS = ["S2", "S3", "S4", "S5", "S6", "S7-1", "S7-2", "S7-3"]
 CODING_STEPS = ["S8", "S9", "S10", "S11"]
 ALL_STEPS = SPEC_STEPS + CODING_STEPS
@@ -123,6 +127,38 @@ def find_repo_root() -> Path:
         if line.startswith("worktree "):
             return Path(line[len("worktree "):]).resolve()
     raise HelperError("メインの作業ツリーを特定できません。")
+
+
+def resolve_main_branch() -> str:
+    """マージ先のブランチ。SPECKIT_MAIN_BRANCH、クラウドセッションの作業ブランチ、main の順に決める。
+
+    クラウドセッションでは、メインの作業ツリーが今いるブランチ（セッションの作業ブランチ）をマージ先にする。
+    detached HEAD やフィーチャーのブランチにいるときは作業ブランチを判定できないので、main に戻す。
+    """
+    explicit = os.environ.get("SPECKIT_MAIN_BRANCH")
+    if explicit:
+        return explicit
+    if CLOUD_SESSION:
+        current = run_git(["rev-parse", "--abbrev-ref", "HEAD"], check=False).stdout.strip()
+        if current and current != "HEAD" and not current.startswith("feature/"):
+            return current
+    return "main"
+
+
+def push_after_merge() -> None:
+    """クラウドセッションで、マージ先のブランチを origin に push する（VM が回収されてもマージの結果を残すため）。"""
+    if not CLOUD_SESSION:
+        return
+    if not git_ok(["remote", "get-url", "origin"]):
+        print("PUSH_SKIPPED: origin がありません")
+        return
+    proc = run_git(["push", "-u", "origin", MAIN_BRANCH], check=False)
+    if proc.returncode == 0:
+        print(f"PUSHED: origin/{MAIN_BRANCH}")
+    else:
+        # クラウドセッションでは作業ブランチ以外への push は拒否される。マージ自体は済んでいるので止めない。
+        info(proc.stderr.strip())
+        print(f"PUSH_FAILED: origin/{MAIN_BRANCH}（クラウドセッションで push できるのは作業ブランチだけ）")
 
 
 def branch_of(name: str) -> str:
@@ -616,6 +652,7 @@ def cmd_finish(args: list[str]) -> None:
     if ignored:
         print(f"REMOVED_IGNORED: {' '.join(ignored)}")
     print(f"MERGE_COMMIT: {git_out(['rev-parse', '--short', 'HEAD'])}")
+    push_after_merge()
     if human_pending:
         # 人のタスクだけが残っているときは止めずにマージし、残りを知らせる。
         print(f"HUMAN_TASKS_PENDING: {len(human_pending)}")
@@ -799,7 +836,9 @@ Commands:
 
 Steps: {' '.join(ALL_STEPS)}（S1 は ensure、S12 は finish）
 Exit codes: 0 = 成功, 1 = エラー, 3 = 前提条件を満たさない（PRECONDITION: <code> を stderr に出力）
-Environment: SPECKIT_MAIN_BRANCH（既定のブランチ名。既定値 main）"""
+Environment: SPECKIT_MAIN_BRANCH（既定のブランチ名。既定値 main）
+             CLAUDE_CODE_REMOTE=true（Claude Code のクラウドセッション。SPECKIT_MAIN_BRANCH がなければ、
+             メインの作業ツリーの今のブランチをマージ先にし、finish の後に origin へ push する）"""
 
 COMMANDS = {
     "ensure": cmd_ensure,
@@ -818,7 +857,7 @@ COMMANDS = {
 
 
 def main(argv: list[str]) -> int:
-    global REPO_ROOT, WORKTREES_DIR
+    global REPO_ROOT, WORKTREES_DIR, MAIN_BRANCH
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
@@ -833,6 +872,7 @@ def main(argv: list[str]) -> int:
             raise HelperError(f"不明なコマンド '{action}' です。'worktree_helper.py help' で使い方を確認してください。")
         REPO_ROOT = find_repo_root()
         WORKTREES_DIR = REPO_ROOT / ".worktrees"
+        MAIN_BRANCH = resolve_main_branch()
         if not git_ok(["rev-parse", "--verify", "-q", f"refs/heads/{MAIN_BRANCH}"]):
             raise HelperError(
                 f"ブランチ {MAIN_BRANCH} がありません。既定のブランチが別の名前なら、環境変数 SPECKIT_MAIN_BRANCH にその名前を指定してください。")

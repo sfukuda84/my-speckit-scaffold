@@ -24,6 +24,7 @@ python3 <skills>/speckit-worktree/scripts/worktree_helper.py <command> ...
 - `<skills>` は、このスキルが置かれた skills ディレクトリ（`.claude/skills`、`.agents/skills`、`.kiro/skills` のいずれか）である。
 - スクリプトは Python 3.9 以上の標準ライブラリだけで書かれており、macOS、Linux、Windows で動く。プロジェクトのルートからでも worktree の中からでも実行できる。
 - `python3` がない環境（Windows など）では、`python` または `py -3` に読み替える。
+- マージ先のブランチ（この文書の `main`）は、環境変数 `SPECKIT_MAIN_BRANCH` があればその名前、なければ `main` である。Claude Code のクラウドセッション（`CLAUDE_CODE_REMOTE=true`）では、`SPECKIT_MAIN_BRANCH` がなければ、メインの作業ツリーの今のブランチ（セッションの作業ブランチ）をマージ先にする。`finish` はマージの後に、そのブランチを origin に push する。出力は `PUSHED`、`PUSH_SKIPPED`、`PUSH_FAILED` のいずれかである。`PUSH_FAILED` のときも、マージは済んでいる。規則はプロジェクトの steering（「Claude Code のクラウドセッション」）に従う。
 
 | コマンド | 用途 |
 |---|---|
@@ -123,6 +124,7 @@ NEXT_STEP: S4
    - メインの作業ツリーに未コミットの変更がないことを確かめ、`main` に切り替える。
    - `git merge --no-ff -m "merge(<FEATURE_NAME>): <phase>"` でマージする。ブランチがすでにマージ済み（競合を手で解消した後など）なら、マージを飛ばして片付けだけを行う。
    - worktree とブランチを削除する。worktree にあった無視対象のファイル（`.env` など）も一緒に消えるので、出力の `REMOVED_IGNORED` に挙がったものはユーザーに知らせる。
+   - クラウドセッションでは、マージ先のブランチを origin に push する（`PUSHED` など）。`PUSH_FAILED` なら、その内容をユーザーに伝える。
 2. マージで競合したときは、worktree とブランチが残る。競合の内容をユーザーに示し、解消方針を確認してから、メインの作業ツリーで解消してマージをコミットし、もう一度 `finish` を実行する。マージコミットのメッセージは `merge(<FEATURE_NAME>): <phase>` のままにする。
 
 ### 人のタスクの片付け

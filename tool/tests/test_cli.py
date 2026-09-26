@@ -11,16 +11,25 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCAFFOLD = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(SCAFFOLD / "tool" / "src"))
 
 from new_speckit_project import cli  # noqa: E402
 
+REAL_WHICH = shutil.which
+REAL_RUN = cli.run_command
+
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com",
     "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com",
 }
+
+
+def json_dumps(data: dict) -> str:
+    import json
+    return json.dumps(data)
 
 
 def git(*args: str, cwd: Path) -> str:
@@ -149,6 +158,81 @@ class NewProjectTest(unittest.TestCase):
         self.assertTrue(link.is_symlink() and (link / "SKILL.md").is_file())
 
 
+    # --- --cloud --------------------------------------------------------
+    def fake_gh(self, calls: list[list[str]], view: subprocess.CompletedProcess | None = None):
+        """gh だけを偽物にし、git などはそのまま実行する runner。"""
+        def run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+            if args[0] != "gh":
+                return REAL_RUN(args, cwd)
+            calls.append(args)
+            if args[1:3] == ["repo", "view"] and view is not None:
+                return view
+            if args[1:3] == ["config", "get"]:
+                return subprocess.CompletedProcess(args, 0, "https\n", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return run
+
+    def which_with_gh(self, name: str) -> str | None:
+        return "/bin/gh" if name == "gh" else REAL_WHICH(name)
+
+    def test_local_create_never_calls_gh(self) -> None:
+        """--cloud を付けなければ、従来どおり gh を呼ばず、origin も作らない。"""
+        calls: list[list[str]] = []
+        with mock.patch.object(cli, "run_command", self.fake_gh(calls)):
+            code, target = self.create("local-only", "-m", "テスト")
+        self.assertEqual(code, 0)
+        self.assertEqual(calls, [])
+        self.assertEqual(git("remote", cwd=target), "")
+
+    def test_cloud_pushes_to_existing_empty_repo(self) -> None:
+        bare = self.tmp / "cloud-remote.git"
+        git("init", "-q", "--bare", str(bare), cwd=self.tmp)
+        view = subprocess.CompletedProcess([], 0, json_dumps(
+            {"isEmpty": True, "url": str(bare)[:-len(".git")], "sshUrl": "git@github.com:o/n.git"}), "")
+        calls: list[list[str]] = []
+        with mock.patch.object(cli, "run_command", self.fake_gh(calls, view)), \
+                mock.patch.object(cli.shutil, "which", self.which_with_gh):
+            code, target = self.create("cloud-app", "-m", "テスト", "--cloud", "o/n")
+        self.assertEqual(code, 0)
+        self.assertEqual(git("remote", "get-url", "origin", cwd=target), str(bare))
+        self.assertEqual(git("rev-parse", "main", cwd=target), git("rev-parse", "main", cwd=bare))
+        self.assertIn(["gh", "auth", "status"], calls)
+        self.assertFalse(any(c[1:3] == ["repo", "create"] for c in calls))
+
+    def test_cloud_creates_repo_when_missing(self) -> None:
+        view = subprocess.CompletedProcess([], 1, "", "GraphQL: Could not resolve to a Repository with the name 'o/new'.")
+        calls: list[list[str]] = []
+        with mock.patch.object(cli, "run_command", self.fake_gh(calls, view)), \
+                mock.patch.object(cli.shutil, "which", self.which_with_gh):
+            code, target = self.create("cloud-new", "-m", "テスト", "--cloud", "o/new")
+        self.assertEqual(code, 0)
+        create = [c for c in calls if c[1:3] == ["repo", "create"]]
+        self.assertEqual(len(create), 1)
+        self.assertIn("--private", create[0])
+        self.assertEqual(create[0][create[0].index("--source") + 1], str(target))
+
+    def test_cloud_keeps_local_project_when_push_fails(self) -> None:
+        view = subprocess.CompletedProcess([], 0, json_dumps(
+            {"isEmpty": True, "url": str(self.tmp / "no-such-remote"), "sshUrl": ""}), "")
+        calls: list[list[str]] = []
+        with mock.patch.object(cli, "run_command", self.fake_gh(calls, view)), \
+                mock.patch.object(cli.shutil, "which", self.which_with_gh), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            code, target = self.create("cloud-fail", "-m", "テスト", "--cloud", "o/n")
+        self.assertEqual(code, 1)
+        self.assertTrue((target / cli.CONCEPT_FILE).is_file())
+        self.assertIn("git push -u origin main", err.getvalue())
+        self.assertIn("claude --cloud", err.getvalue())
+
+    def test_cloud_rejects_non_empty_repo_before_clone(self) -> None:
+        view = subprocess.CompletedProcess([], 0, json_dumps({"isEmpty": False, "url": "u", "sshUrl": "s"}), "")
+        with mock.patch.object(cli, "run_command", self.fake_gh([], view)), \
+                mock.patch.object(cli.shutil, "which", self.which_with_gh), \
+                self.assertRaises(cli.CliError):
+            self.create("cloud-nonempty", "-m", "テスト", "--cloud", "o/n")
+        self.assertFalse((self.tmp / "cloud-nonempty").exists())
+
+
 class CloneArgsTest(unittest.TestCase):
     def test_clone_does_not_force_symlinks(self) -> None:
         """H6: clone で core.symlinks=true を強制しない（Windows でリンクを作れない環境で clone が失敗するため）。"""
@@ -237,6 +321,55 @@ class AgentCommandTest(unittest.TestCase):
         # L10: 見つかっても動かない python3（Windows の Microsoft Store の代わりの実行ファイルなど）は使わない
         self.assertEqual(cli.detect_python(lambda n: f"/x/{n}", lambda exe: not exe.endswith("python3")), "python")
         self.assertTrue(cli._runs_python3(sys.executable))
+
+
+class CloudCheckTest(unittest.TestCase):
+    @staticmethod
+    def runner(auth: int = 0, view: subprocess.CompletedProcess | None = None):
+        def run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+            if args[1:3] == ["auth", "status"]:
+                return subprocess.CompletedProcess(args, auth, "", "")
+            return view or subprocess.CompletedProcess(args, 1, "", "Could not resolve to a Repository")
+        return run
+
+    def check(self, repo: str = "o/n", agent: str = "claude", which=lambda n: f"/bin/{n}", run=None):
+        return cli.check_cloud(repo, agent, which, run or self.runner())
+
+    def test_guards(self) -> None:
+        with self.assertRaisesRegex(cli.CliError, "--agent claude"):
+            self.check(agent="codex")
+        for bad in ("n", "o/n/x", "https://github.com/o/n", "-o/n"):
+            with self.assertRaisesRegex(cli.CliError, "<owner>/<name>"):
+                self.check(repo=bad)
+        with self.assertRaisesRegex(cli.CliError, "gh"):
+            self.check(which=lambda _n: None)
+        with self.assertRaisesRegex(cli.CliError, "gh auth login"):
+            self.check(run=self.runner(auth=1))
+        with self.assertRaisesRegex(cli.CliError, "確認できません"):
+            self.check(run=self.runner(view=subprocess.CompletedProcess([], 1, "", "network down")))
+
+    def test_repo_state(self) -> None:
+        self.assertIsNone(self.check())
+        empty = subprocess.CompletedProcess([], 0, '{"isEmpty": true, "url": "u", "sshUrl": "s"}', "")
+        self.assertEqual(self.check(run=self.runner(view=empty))["url"], "u")
+        full = subprocess.CompletedProcess([], 0, '{"isEmpty": false, "url": "u", "sshUrl": "s"}', "")
+        with self.assertRaisesRegex(cli.CliError, "空ではありません"):
+            self.check(run=self.runner(view=full))
+
+    def test_cloud_option_and_launch(self) -> None:
+        parser = cli.build_parser()
+        self.assertIsNone(parser.parse_args(["p"]).cloud)
+        self.assertEqual(parser.parse_args(["p", "--cloud", "o/n"]).cloud, "o/n")
+        self.assertIn("--oneshot", cli.cloud_prompt(cli.CLOUD_DEFAULT_MODE))
+        with mock.patch.object(cli.subprocess, "call", return_value=0) as call, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.launch_cloud(Path("/tmp/p"), "o/n", False, "auto", lambda n: f"/bin/{n}"), 0)
+        self.assertEqual(call.call_args.args[0], ["/bin/claude", "--cloud", cli.natural_prompt("auto")])
+        with mock.patch.object(cli.subprocess, "call") as call, \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(cli.launch_cloud(Path("/tmp/p"), "o/n", True, "oneshot"), 0)
+        call.assert_not_called()
+        self.assertIn("claude --cloud", err.getvalue())
 
 
 if __name__ == "__main__":
