@@ -5,6 +5,9 @@
   C2 スキルのシンボリックリンクを確かめる（作れない環境では実体のコピーに切り替える）
   C3 コアコンセプトを docs/concept/core-concept.md に保存し、git init と初回コミットを行う
   C4 指定のエージェントを対話モードで起動し、speckit-bootstrap を渡す（--auto / --oneshot はそのまま引き継ぐ）
+  --cloud <owner>/<name> を付けたときだけ、C4 の代わりに次を行う（付けなければ C4 まで従来どおり）
+  C5 GitHub にリポジトリを作って（空の既存リポジトリならそれを使って）main を push する
+  C6 Claude Code のクラウドセッション（claude --cloud）で speckit-bootstrap を始める（既定は --oneshot）
 
 macOS / Linux / Windows で動くように、標準ライブラリだけで書く（Python 3.9 以上）。
 """
@@ -15,6 +18,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -352,6 +356,93 @@ def launch_agent(agent: str, root: Path, no_launch: bool, mode: str = "") -> int
     return subprocess.call(command, cwd=str(root))
 
 
+# --- C5/C6: クラウドセッション（--cloud） -------------------------------------------
+# クラウドセッションは GitHub のリポジトリを clone して動き、結果は作業ブランチへの push で持ち帰る。
+# そのため、ローカルで作ったプロジェクトを先に GitHub に push してから、claude --cloud で立ち上げを始める。
+
+GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?/[A-Za-z0-9._-]+$")
+# クラウドでは、待機した後に質問へ答えると回答が効かない不具合の報告があるため、既定を --oneshot にする。
+CLOUD_DEFAULT_MODE = "oneshot"
+
+
+def run_command(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(args, cwd=str(cwd) if cwd else None, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace")
+
+
+def check_cloud(repo: str, agent: str, which: Callable[[str], str | None] | None = None,
+                run: Callable[..., subprocess.CompletedProcess] | None = None) -> dict | None:
+    """--cloud の事前確認（clone より前に行う）。GitHub に空のリポジトリがあればその情報を、なければ None を返す。"""
+    which = which or shutil.which
+    run = run or run_command
+    if agent != "claude":
+        raise CliError("--cloud は --agent claude のときだけ使えます（クラウドセッションは Claude Code の機能です）。")
+    if not GITHUB_REPO_RE.match(repo):
+        raise CliError(f"--cloud には GitHub のリポジトリを <owner>/<name> の形で指定してください（指定: {repo}）。")
+    if which("gh") is None:
+        raise CliError("--cloud には GitHub CLI（gh）が必要です。インストールして `gh auth login` でログインしてください。")
+    if run(["gh", "auth", "status"]).returncode != 0:
+        raise CliError("gh にログインしていません。`gh auth login` でログインしてから再実行してください。")
+    proc = run(["gh", "repo", "view", repo, "--json", "isEmpty,url,sshUrl"])
+    if proc.returncode != 0:
+        if "Could not resolve to a Repository" in proc.stderr:
+            return None
+        raise CliError(f"GitHub の {repo} を確認できません。\n{proc.stderr.strip()}")
+    data = json.loads(proc.stdout)
+    if not data.get("isEmpty"):
+        raise CliError(f"GitHub の {repo} は空ではありません。新しいリポジトリ名か、空のリポジトリを指定してください。")
+    return data
+
+
+def cloud_prompt(mode: str) -> str:
+    """クラウドセッションに渡す依頼文。リポジトリのスキルのスラッシュコマンドに頼らず、スキル名で依頼する。"""
+    return natural_prompt(mode)
+
+
+def cloud_manual_steps(root: Path, mode: str, push: bool) -> list[str]:
+    steps = [f"cd {root}"]
+    if push:
+        steps.append("git push -u origin main")
+    steps.append(f'claude --cloud "{cloud_prompt(mode)}"')
+    return steps
+
+
+def publish_to_github(root: Path, repo: str, existing: dict | None,
+                      run: Callable[..., subprocess.CompletedProcess] | None = None) -> None:
+    """C5: GitHub に main を push する。既存の空のリポジトリがなければ、非公開で作る。"""
+    run = run or run_command
+    if existing is None:
+        info(f"==> GitHub に非公開のリポジトリ {repo} を作り、main を push します。")
+        proc = run(["gh", "repo", "create", repo, "--private", "--source", str(root),
+                    "--remote", "origin", "--push"], cwd=root)
+    else:
+        info(f"==> GitHub の空のリポジトリ {repo} に main を push します。")
+        protocol = run(["gh", "config", "get", "git_protocol", "-h", "github.com"]).stdout.strip()
+        url = existing["sshUrl"] if protocol == "ssh" else existing["url"] + ".git"
+        run_git(["remote", "add", "origin", url], cwd=root)
+        proc = run(["git", "push", "-u", "origin", "main"], cwd=root)
+    if proc.returncode != 0:
+        raise CliError(f"GitHub への push に失敗しました。\n{proc.stderr.strip()}")
+
+
+def launch_cloud(root: Path, repo: str, no_launch: bool, mode: str,
+                 which: Callable[[str], str | None] | None = None) -> int:
+    """C6: claude --cloud でクラウドセッションを作り、speckit-bootstrap を始める。"""
+    exe = None if no_launch else (which or shutil.which)("claude")
+    info("注意: クラウドセッションが結果を push するには、Claude GitHub App をこのリポジトリにインストールするか、"
+         "`/web-setup` で GitHub を接続しておく必要があります。")
+    info("      セッションの成果は作業ブランチ（claude/...）に push されます。main へは PR で取り込んでください。")
+    if exe is None:
+        if not no_launch:
+            info("警告: claude が見つからないため、クラウドセッションを作りませんでした。")
+        info("次の手順で立ち上げを始めてください:")
+        for step in cloud_manual_steps(root, mode, push=False):
+            info(f"  {step}")
+        return 0
+    info(f"==> クラウドセッションを作り、speckit-bootstrap（--{mode}）を始めます（{repo}）。")
+    return subprocess.call([exe, "--cloud", cloud_prompt(mode)], cwd=str(root))
+
+
 # --- 本体 -----------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -375,7 +466,12 @@ def build_parser() -> argparse.ArgumentParser:
                       help="立ち上げで質問せず、エージェントの推奨案を採用して進める（speckit-bootstrap --auto）")
     mode.add_argument("--oneshot", dest="mode", action="store_const", const="oneshot",
                       help="立ち上げの最初に一度だけまとめて質問し、以降は自動で進める（speckit-bootstrap --oneshot）")
-    parser.add_argument("--no-launch", action="store_true", help="エージェントを起動せず、手順の案内だけを表示する")
+    parser.add_argument("--cloud", metavar="OWNER/NAME",
+                        help="Claude Code のクラウドセッションで立ち上げる。GitHub にこのリポジトリを作って"
+                             "（空の既存リポジトリならそれを使って）push し、claude --cloud で始める。"
+                             "gh が必要。--auto / --oneshot を省くと --oneshot で進める")
+    parser.add_argument("--no-launch", action="store_true",
+                        help="エージェントを起動せず、手順の案内だけを表示する（--cloud では push までを行う）")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -384,6 +480,8 @@ def create_project(args: argparse.Namespace, stdin=None) -> int:
     target = Path(args.target).expanduser().resolve()
     check_target(target)
     check_git_identity()
+    cloud = getattr(args, "cloud", None)
+    existing = check_cloud(cloud, args.agent) if cloud else None
     concept = read_concept(args.message, args.concept_file, stdin=stdin)
 
     created = not target.exists()
@@ -410,7 +508,20 @@ def create_project(args: argparse.Namespace, stdin=None) -> int:
         info("警告: Python が見つかりません。Spec Kit とスキルのスクリプトには Python 3.9 以上が必要です。")
     elif python != "python3":
         info(f"注意: python3 が使えないため、スキルのスクリプトは {python} で実行されます（steering に読み替えのルールがあります）。")
-    return launch_agent(args.agent, target, args.no_launch, args.mode)
+    if not cloud:
+        return launch_agent(args.agent, target, args.no_launch, args.mode)
+
+    mode = args.mode or CLOUD_DEFAULT_MODE
+    try:
+        publish_to_github(target, cloud, existing)
+    except CliError as error:
+        # ローカルのプロジェクトはできているので消さず、続きの手順を案内する。
+        info(f"エラー: {error}")
+        info(f"ローカルのプロジェクト {target} は残しています。push できる状態にしたうえで、次の手順で続けてください:")
+        for step in cloud_manual_steps(target, mode, push=True):
+            info(f"  {step}")
+        return 1
+    return launch_cloud(target, cloud, args.no_launch, mode)
 
 
 def build_update_parser() -> argparse.ArgumentParser:

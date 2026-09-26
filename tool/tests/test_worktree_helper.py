@@ -25,6 +25,9 @@ class WorktreeHelperScenario(unittest.TestCase):
         self.repo = self.tmp / "repo"
         self.repo.mkdir()
         self.env = {**os.environ, **GIT_ENV}
+        # クラウドセッションの中でテストを実行しても、ローカルの動作を確かめられるようにする。
+        for key in ("CLAUDE_CODE_REMOTE", "SPECKIT_MAIN_BRANCH"):
+            self.env.pop(key, None)
         self.git("init", "-q", "-b", "main")
         (self.repo / "docs" / "feature").mkdir(parents=True)
         (self.repo / ".specify").mkdir()
@@ -339,6 +342,70 @@ class WorktreeHelperScenario(unittest.TestCase):
         proc = self.run_helper("ensure", "1", "--phase", "spec")
         self.assertEqual(proc.returncode, 1)
         self.assertIn(".worktrees/", proc.stderr)
+
+    # --- クラウドセッション ------------------------------------------------
+    def finish_one(self, env: dict[str, str]) -> subprocess.CompletedProcess:
+        """1 番目のフィーチャーを最後のステップまで進め、指定の環境で finish する。"""
+        self.out("ensure", "1", "--phase", "all")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli", tasks="- [x] T001\n")
+        self.checkpoints("1", "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3 S8 S9 S10 S11")
+        return subprocess.run([sys.executable, str(HELPER), "finish", "1", "--phase", "all"], cwd=self.repo,
+                              env=env, capture_output=True, text=True, encoding="utf-8")
+
+    def test_local_merges_into_main_even_on_other_branch(self) -> None:
+        """ローカル（CLAUDE_CODE_REMOTE なし）では従来どおり main がマージ先で、push もしない。"""
+        self.git("switch", "-q", "-c", "claude/work")
+        proc = self.finish_one(self.env)
+        self.assertEqual(proc.returncode, 3, proc.stderr)
+        self.assertIn("PRECONDITION: NOT_ON_MAIN", proc.stderr)
+        self.assertIn("マージ先は main", proc.stderr)
+        self.git("switch", "-q", "main")
+        proc = self.run_helper("finish", "1", "--phase", "all")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("PUSH", proc.stdout)
+        self.assertIn("merge(001-todo-cli): all", self.git("log", "-1", "--format=%s", "main"))
+
+    def test_cloud_session_merges_into_working_branch_and_pushes(self) -> None:
+        """クラウドセッションでは、今のブランチ（セッションの作業ブランチ）にマージし、origin に push する。"""
+        remote = self.tmp / "remote.git"
+        self.git("init", "-q", "--bare", str(remote))
+        self.git("remote", "add", "origin", str(remote))
+        self.git("switch", "-q", "-c", "claude/work")
+        cloud = {**self.env, "CLAUDE_CODE_REMOTE": "true"}
+        proc = subprocess.run([sys.executable, str(HELPER), "ensure", "1", "--phase", "all"], cwd=self.repo,
+                              env=cloud, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        self.spec_files(wt, "001-todo-cli", tasks="- [x] T001\n")
+        for step in "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3 S8 S9 S10 S11".split():
+            subprocess.run([sys.executable, str(HELPER), "checkpoint", "1", step, f"x: {step}"], cwd=self.repo,
+                           env=cloud, check=True, capture_output=True)
+        proc = subprocess.run([sys.executable, str(HELPER), "finish", "1", "--phase", "all"], cwd=self.repo,
+                              env=cloud, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PUSHED: origin/claude/work", proc.stdout)
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD"), "claude/work")
+        self.assertIn("merge(001-todo-cli): all", self.git("log", "-1", "--format=%s", "claude/work"))
+        self.assertNotIn("merge(", self.git("log", "--format=%s", "main"))
+        self.assertEqual(self.git("rev-parse", "claude/work"),
+                         self.git("--git-dir", str(remote), "rev-parse", "claude/work"))
+
+    def test_cloud_session_respects_explicit_main_branch(self) -> None:
+        """クラウドセッションでも、SPECKIT_MAIN_BRANCH を指定すればそちらを使う。push できなくてもマージは済ませる。"""
+        cloud = {**self.env, "CLAUDE_CODE_REMOTE": "true", "SPECKIT_MAIN_BRANCH": "main"}
+        proc = self.finish_one(cloud)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PUSH_SKIPPED", proc.stdout)  # origin がない
+        self.assertIn("merge(001-todo-cli): all", self.git("log", "-1", "--format=%s", "main"))
+
+    def test_cloud_session_detached_head_falls_back_to_main(self) -> None:
+        """作業ブランチを判定できない（detached HEAD）ときは main に戻す。"""
+        self.git("checkout", "-q", "--detach")
+        cloud = {**self.env, "CLAUDE_CODE_REMOTE": "true"}
+        proc = subprocess.run([sys.executable, str(HELPER), "next", "--phase", "spec"], cwd=self.repo, env=cloud,
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.stdout.strip(), "001-todo-cli", proc.stderr)
 
 
 if __name__ == "__main__":

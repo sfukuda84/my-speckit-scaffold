@@ -47,6 +47,7 @@ flowchart LR
 | Python 3.9 以上 | スクリプトの実行 | macOS / Windows: [python.org](https://www.python.org/downloads/) など |
 | uv | コマンドの導入、企画書の生成 | [uv のインストール手順](https://docs.astral.sh/uv/getting-started/installation/) |
 | AI エージェントの CLI | 対話で作業を進める | Claude Code、Codex CLI、Antigravity、Kiro CLI、opencode のいずれか 1 つ以上 |
+| GitHub CLI（gh） | クラウドセッションで立ち上げるとき（`--cloud`）だけ使う | [gh のインストール手順](https://cli.github.com/)。入れた後に `gh auth login` |
 
 Git には名前とメールアドレスを設定しておく。
 
@@ -129,8 +130,33 @@ new-speckit-project ~/work/my-app -m "小規模な美容室向けの予約管理
 - `new-speckit-project` に `--auto` か `--oneshot` を付けると、そのモードで立ち上げが始まる。
 - 自動で決めたことは仮定として `docs/auto-decisions.md` に記録される。見直しの優先度が「高」のもの（予算、課金、MVP の範囲、アーキテクチャなど）は、必ず見直す。変えるときは、記録にあるスキル（`speckit-architecture` など）の更新モードを使う。
 - 前提をコンセプトに書いておくほど、推奨案は的確になる。`--auto` でも、`/speckit-bootstrap --auto 予算は月 1 万円まで、AWS を使いたい` のように引数で足せる。
-- ブランチが `main` でない場合や、検証のエラーが直らない場合は、自動でも止まる。対処してから再実行すれば続きから始まる。
+- ブランチが `main` でない場合（クラウドセッションでは、セッションの作業ブランチでよい）や、検証のエラーが直らない場合は、自動でも止まる。対処してから再実行すれば続きから始まる。
 - 番号 `000` は共通基盤、`999` は運用基盤の予約番号で、コアの機能は `001` から振られる。
+
+### クラウドセッションで立ち上げる（`--cloud`）
+
+Claude Code のクラウドセッション（claude.ai/code）で立ち上げたいときは、`--cloud` に GitHub のリポジトリ名を付ける。PC を閉じても作業が続き、スマートフォンからも様子を見られる。
+
+```bash
+new-speckit-project ~/work/my-app -m "コアコンセプト" --cloud me/my-app
+```
+
+- プロジェクトはローカルで作る。その後、GitHub に非公開のリポジトリ `me/my-app` を作って `main` を push し、`claude --cloud` でクラウドセッションを始める。空の既存リポジトリを指定したときは、そこに push する。空でないリポジトリを指定すると、何も作らずに止まる。
+- 事前に、GitHub CLI（gh）でログインしておく。クラウドセッションが結果を push できるように、Claude GitHub App をリポジトリに入れるか、Claude Code で `/web-setup` を実行しておく。
+- `--auto` も `--oneshot` も付けなければ、`--oneshot` で進める。クラウドでは、しばらく経ってから質問に答えると回答が効かないことがあるためである。
+- 成果は、セッションの作業ブランチ（`claude/...`）に push される。確かめてから、PR で `main` に取り込む。
+- push に失敗したときは、ローカルのプロジェクトを残したまま止まり、続きの手順（`git push` と `claude --cloud`）を表示する。
+- `--cloud` を付けなければ、これまでどおりローカルでエージェントを起動する。
+
+クラウドセッションでスキルを使うときは、次の点がローカルと違う。スキルは、クラウドセッションだけに設定される環境変数 `CLAUDE_CODE_REMOTE=true` を見て、動きを切り替える。
+
+| 項目 | ローカル | クラウドセッション |
+|---|---|---|
+| `speckit-feature` / `coding` / `all` のマージ先 | `main`（`SPECKIT_MAIN_BRANCH` で変えられる） | セッションの作業ブランチ。マージの後に push する。`main` へは PR で取り込む |
+| 中断と再開 | worktree が残っていれば、続きから再開できる | 操作のないまましばらく経つと VM が消え、push していない worktree やブランチも消える。1 つのフィーチャーは 1 つのセッションで最後まで進める |
+| 質問 | 対話で答えられる | `--auto` か `--oneshot` がよい |
+| 出典付きの Web 調査 | そのまま使える | ページを開けない（WebFetch が止められる）ことがある。そのときは検索結果で進め、開けなかった出典はその旨を書く |
+| `.github/workflows/` の変更 | そのまま push できる | push を拒否されることがある。拒否されたら `[人]` のタスクにして、ローカルで反映する |
 
 ## 5. 仕様化と実装（speckit-all / speckit-feature / speckit-coding）
 
@@ -449,6 +475,10 @@ new-speckit-project update                   # 取り込んで、1 つのコミ�
 | `speckit-feature` が `CODING_IN_PROGRESS` で止まる | その機能は実装の途中まで進んでいる。`speckit-coding` か `speckit-all` で再開する |
 | マージで競合した | エージェントに競合の内容を確認してもらい、解消方針を答える。解消後にもう一度 `speckit-all` を実行すると、片付けから再開する |
 | `ブランチ main がありません` | 既定のブランチが別の名前。環境変数 `SPECKIT_MAIN_BRANCH` にその名前を指定する |
+| `--cloud` で `gh にログインしていません` | `gh auth login` でログインしてから再実行する |
+| `--cloud` で `空ではありません` | 指定した GitHub のリポジトリに、すでに中身がある。新しい名前か、空のリポジトリを指定する |
+| `--cloud` で push に失敗した | ローカルのプロジェクトは残っている。表示された手順（`git push -u origin main` と `claude --cloud …`）で続ける。https で push できないときは `gh auth setup-git` を実行する |
+| クラウドセッションで `PUSH_FAILED` が出た | マージは済んでいる。`SPECKIT_MAIN_BRANCH` に作業ブランチ以外を指定していないか確かめる（クラウドでは作業ブランチにしか push できない） |
 | 企画書で文字があふれる | `build_pptx.py --check` の警告を見て、文を短くするかスライドを分ける。上限は `design.yaml` の `limits` で変えられる |
 | 企画書の日本語が明朝体になる | 開いた PC に `design.yaml` のフォントがない。入っているフォントに変えて作り直す |
 | Codex がコミットできない、Web を調べられない | サンドボックスの設定が足りない。`new-speckit-project --agent codex` で起動するか、README の「注意点」の指定で起動する |
@@ -462,6 +492,7 @@ new-speckit-project update                   # 取り込んで、1 つのコミ�
 | `uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirectory=tool"` | コマンドを入れる |
 | `uv tool upgrade new-speckit-project` | コマンドを更新する |
 | `new-speckit-project <ディレクトリ> [-m "コンセプト"] [--agent <名前>] [--auto \| --oneshot] [--no-launch]` | プロジェクトを作る |
+| `new-speckit-project <ディレクトリ> [-m "コンセプト"] --cloud <owner>/<name>` | プロジェクトを作って GitHub に push し、クラウドセッションで立ち上げる |
 | `new-speckit-project update [プロジェクト] [--dry-run]` | 作成済みのプロジェクトに scaffold の更新を取り込む |
 
 ### スキル（Claude Code の書き方）

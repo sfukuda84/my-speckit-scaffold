@@ -13,7 +13,7 @@ uv tool install "git+https://github.com/sfukuda84/my-speckit-scaffold#subdirecto
 ## 使い方
 
 ```bash
-new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <ファイル>] [--agent claude|codex|agy|kiro|opencode] [--auto | --oneshot]
+new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <ファイル>] [--agent claude|codex|agy|kiro|opencode] [--auto | --oneshot] [--cloud <owner>/<name>]
 ```
 
 | オプション | 内容 |
@@ -25,7 +25,8 @@ new-speckit-project <作成先> [-m "コアコンセプト" | --concept-file <�
 | `--repo` | scaffold の Git リポジトリ（環境変数 `SPECKIT_SCAFFOLD_REPO` でも指定できる） |
 | `--auto` | 立ち上げで質問せず、エージェントの推奨案を採用して進める（`speckit-bootstrap --auto` で起動する） |
 | `--oneshot` | 立ち上げの最初に一度だけ、予算や MVP の範囲などをまとめて質問し、以降は自動で進める（`speckit-bootstrap --oneshot` で起動する） |
-| `--no-launch` | エージェントを起動せず、手順の案内だけを表示する |
+| `--cloud` | Claude Code のクラウドセッションで立ち上げる。GitHub に `<owner>/<name>` の非公開リポジトリを作り（空の既存リポジトリならそれを使い）、`main` を push してから `claude --cloud` で `speckit-bootstrap` を始める。`gh` とログインが必要。`--agent claude` のときだけ使え、`--auto` / `--oneshot` を省くと `--oneshot` で進める。付けなければ従来どおりローカルで起動する |
+| `--no-launch` | エージェントを起動せず、手順の案内だけを表示する（`--cloud` では push までを行う） |
 
 ## 作成済みのプロジェクトを更新する
 

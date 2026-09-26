@@ -41,6 +41,7 @@ new-speckit-project ~/work/my-app                      # コアコンセプト�
 new-speckit-project ~/work/my-app -m "コアコンセプト"   # 入力を省く
 new-speckit-project ~/work/my-app --agent codex        # 使うエージェントを選ぶ（既定は claude）
 new-speckit-project ~/work/my-app -m "…" --auto        # 立ち上げを質問なしで進める（--oneshot は最初に一度だけ質問する）
+new-speckit-project ~/work/my-app -m "…" --cloud me/my-app  # GitHub に push し、Claude Code のクラウドセッションで立ち上げる
 ```
 
 コマンドは次を行う。
@@ -49,6 +50,11 @@ new-speckit-project ~/work/my-app -m "…" --auto        # 立ち上げを質問
 2. スキルのシンボリックリンクを確かめる。リンクを作れない環境（Windows で開発者モードがオフなど）では、スキルの実体のコピーに切り替えて警告する。
 3. コアコンセプトを `docs/concept/core-concept.md` に保存し、`git init` と初回コミットを行う。scaffold の README は `docs/speckit-scaffold.md` に移る。
 4. 指定のエージェントを対話モードで起動し、`speckit-bootstrap` を始める。
+
+`--cloud <owner>/<name>` を付けたときだけ、4 の代わりに次を行う。付けなければ、これまでと同じ動作である。
+
+1. GitHub に非公開のリポジトリを作り、`main` を push する（空の既存リポジトリを指定したときは、そこに push する）。[GitHub CLI（gh）](https://cli.github.com/) とログインが必要である。
+2. `claude --cloud` で Claude Code のクラウドセッションを作り、`speckit-bootstrap` を始める。`--auto` も `--oneshot` も付けなければ、`--oneshot` で進める。成果はセッションの作業ブランチに push されるので、PR で `main` に取り込む。
 
 オプションの一覧は [tool/README.md](tool/README.md) を参照する。
 
@@ -273,3 +279,9 @@ py -3 $H status
 - **opencode**: `.claude/skills/` と `.agents/skills/` の両方から同じスキルを読み込むため、起動時に `duplicate skill name` の警告が出る。動作には影響しない。
 - **`.worktrees/`**: `.gitignore` で除外している。除外を外すと、worktree 管理のスクリプトが S1 で止まる。
 - **既定のブランチ**: スクリプトは既定のブランチを `main` とみなす。別の名前のリポジトリで使うときは、環境変数 `SPECKIT_MAIN_BRANCH` にその名前を指定する。
+- **Claude Code のクラウドセッション**: スキルは claude.ai/code や `claude --cloud` のクラウドセッションでも動く。ただし次の制約がある。ローカルで使うときは、これまでどおりに動く（判定には、クラウドセッションだけに設定される `CLAUDE_CODE_REMOTE=true` を使う）。詳しくは [MANUAL.md](MANUAL.md) の §4「クラウドセッションで立ち上げる」と、steering の「Claude Code のクラウドセッション」を参照する。
+  - push できるのはセッションの作業ブランチだけなので、worktree のスキルは作業ブランチにマージして push する。`main` へは PR で取り込む。
+  - VM が回収されると、push していないものは消えるので、1 つのフィーチャーは 1 つのセッションで最後まで進める。
+  - 質問は `--auto` か `--oneshot` で減らすのが安全である。
+  - 出典付きの Web 調査は、WebFetch が止められると弱くなる。
+  - `.github/workflows/` の変更は push を拒否されることがある。
