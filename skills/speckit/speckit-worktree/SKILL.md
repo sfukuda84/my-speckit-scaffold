@@ -1,7 +1,7 @@
 ---
 name: "speckit-worktree"
 description: "speckit-feature・speckit-coding・speckit-all が共通で使う worktree 管理スキル。フィーチャーごとの Git worktree とブランチの準備（既存があれば再利用）、ステップ完了ごとの進捗コミット、main への --no-ff マージと片付け、中止、進捗の確認を行う。3 スキル共通の実行規則（ステップ番号、再開、安全規則、対話、引数の解釈、自動モード --auto）もここに定める。「フィーチャーの進捗を見せて」「worktree を破棄して」と言われたとき、または /speckit-worktree と打たれたときにも使う。"
-argument-hint: "status | next --phase spec|coding|all | abort <フィーチャー>"
+argument-hint: "status | next --phase spec|coding|all | human-tasks [<フィーチャー>] | sync-status <フィーチャー> | abort <フィーチャー>"
 compatibility: "Requires git and Python 3.9+, spec-kit project structure with .specify/ directory"
 user-invocable: true
 disable-model-invocation: false
@@ -33,7 +33,9 @@ python3 <skills>/speckit-worktree/scripts/worktree_helper.py <command> ...
 | `$HELPER finish <feature> --phase spec\|coding\|all [--allow-unchecked] [--commit-leftovers] [--switch]` | S12 片付け。`main` に `--no-ff` でマージし、worktree とブランチを削除する。worktree の外で実行する |
 | `$HELPER abort <feature> [--yes]` | worktree とブランチを破棄する。`--yes` がなければ対象を表示するだけ |
 | `$HELPER list` | 全フィーチャー名を着手順（`spec_order.md` の並び、その後に番号順）で表示する |
-| `$HELPER status` | 全フィーチャーの仕様・実装・worktree の状況を表示する |
+| `$HELPER status` | 全フィーチャーの仕様・実装・worktree の状況と、残っている人のタスク（`[人]`）の件数を表示する |
+| `$HELPER human-tasks [<feature>]` | 残っている人のタスクを一覧する。worktree があればその `tasks.md`、なければ `main` のもの（メインの作業ツリーが `main` にいれば、コミット前の変更も含む）を読む |
+| `$HELPER sync-status <feature>` | `main` にマージ済みのフィーチャーの状態欄を、`tasks.md` に合わせて `完了` か `人の作業待ち` にする。`main` で実行し、変更はコミットしない |
 | `$HELPER next --phase spec\|coding\|all [--skip <feature,...>]` | 次に着手すべきフィーチャーを表示する（途中の worktree を優先。`--skip` で除外） |
 | `$HELPER resolve <query>` | 番号やスラッグからフィーチャー名を決める |
 
@@ -61,7 +63,9 @@ NEXT_STEP: S4
 | `SPEC_MISSING` | spec・plan・tasks がどこにもない | `speckit-feature` か `speckit-all` を案内する |
 | `LEFTOVER_CHANGES` | `finish` で、worktree にどのステップのコミットにも含まれていない変更がある | 変更の一覧をユーザーに示す。マージに含めてよければ `--commit-leftovers` を付けて再実行する。含めない変更は、ユーザーの了承を得て取り除く |
 | `NOT_ON_MAIN` | `finish` で、メインの作業ツリーが `main` 以外のブランチにいる | 切り替えてよいかをユーザーに確認し、よければ `--switch` を付けて再実行する |
-| `UNCHECKED_TASKS` | `finish`（coding / all）で、`tasks.md` に未完了のタスクが残っている | 未完了のタスクの一覧をユーザーに示す。実装するなら S8 の手順で片付けてから、残したままマージしてよいと確認できたら `--allow-unchecked` を付けて `finish` を再実行する |
+| `UNCHECKED_TASKS` | `finish`（coding / all）で、`tasks.md` に `[人]` 以外の未完了のタスクが残っている | 未完了のタスクの一覧をユーザーに示す。実装するなら S8 の手順で片付けてから、残したままマージしてよいと確認できたら `--allow-unchecked` を付けて `finish` を再実行する |
+
+`finish`（coding / all）は、未完了のタスクが `[人]` のものだけなら止めずにマージし、標準出力に `HUMAN_TASKS_PENDING: <件数>` と残りのタスクを出す。この一覧はユーザーに示し、§3「人のタスクの片付け」を案内する。
 
 ## 2. ステップ番号
 
@@ -86,7 +90,7 @@ NEXT_STEP: S4
 
 `checkpoint` はコミットに trailer `Speckit-Step: <step>` と `Speckit-Feature: <FEATURE_NAME>` を付ける。変更がないステップも空コミットで記録する。進捗は、`main` とブランチにあるこの trailer、`main` にマージ済みの `tasks.md`、`merge(<FEATURE_NAME>): coding|all` のマージコミットから判定する。フィーチャー名付きの trailer はマージの後も残るので、競合を手で解消してマージした後に `finish` を再実行しても進捗は失われない。
 
-`checkpoint` は、機能ファイル（`docs/feature/<FEATURE_NAME>.md`）があれば、その状態欄と `docs/feature/README.md` の一覧の状態列も更新する。S2 で `spec化済み（specs/<FEATURE_NAME>）`、S11 で `完了` にする。機能ファイルを手で書き換える必要はない。
+`checkpoint` は、機能ファイル（`docs/feature/<FEATURE_NAME>.md`）があれば、その状態欄と `docs/feature/README.md` の一覧の状態列も更新する。S2 で `spec化済み（specs/<FEATURE_NAME>）`、S11 で `完了` にする。S11 の時点で `tasks.md` に未完了の `[人]` のタスクが残っていれば、`完了` ではなく `人の作業待ち（specs/<FEATURE_NAME>）` にする。機能ファイルを手で書き換える必要はない。
 
 ## 3. 共通手順
 
@@ -114,12 +118,21 @@ NEXT_STEP: S4
 
 1. **worktree の外に出てから**、`$HELPER finish <FEATURE_NAME> --phase <phase>` を実行する（`cd "$REPO_ROOT"`。`REPO_ROOT` は `ensure` の出力にある）。worktree の中で実行すると、スクリプトは止まる。スクリプトは次を行う。
    - 担当範囲の最終ステップ（spec は S7-3、coding と all は S11）が完了していることを確かめる。
-   - coding と all では、`tasks.md` に未完了のタスクがないことを確かめる（あれば `UNCHECKED_TASKS` で止まる）。
+   - coding と all では、`tasks.md` に未完了のタスクがないことを確かめる（`[人]` 以外があれば `UNCHECKED_TASKS` で止まる。`[人]` だけなら続けて、最後に `HUMAN_TASKS_PENDING` を出す）。
    - worktree の残りの変更をコミットする。
    - メインの作業ツリーに未コミットの変更がないことを確かめ、`main` に切り替える。
    - `git merge --no-ff -m "merge(<FEATURE_NAME>): <phase>"` でマージする。ブランチがすでにマージ済み（競合を手で解消した後など）なら、マージを飛ばして片付けだけを行う。
    - worktree とブランチを削除する。worktree にあった無視対象のファイル（`.env` など）も一緒に消えるので、出力の `REMOVED_IGNORED` に挙がったものはユーザーに知らせる。
 2. マージで競合したときは、worktree とブランチが残る。競合の内容をユーザーに示し、解消方針を確認してから、メインの作業ツリーで解消してマージをコミットし、もう一度 `finish` を実行する。マージコミットのメッセージは `merge(<FEATURE_NAME>): <phase>` のままにする。
+
+### 人のタスクの片付け
+
+`[人]` のタスクは、マージの後に `main` で片付けてよい。規則はプロジェクトの steering（「人が行うタスク」）に従う。
+
+1. `$HELPER human-tasks <FEATURE_NAME>` で残りを示す。
+2. ユーザーが完了を伝えたら、そのタスクの「完了の確かめ方」で確かめられる部分を確かめ、`main` の `tasks.md` を `- [x]` にする。
+3. `$HELPER sync-status <FEATURE_NAME>` で状態欄を合わせる。人のタスクがなくなれば `完了` になる。
+4. `tasks.md` と機能ファイル、`docs/feature/README.md` の変更をまとめてコミットする（例: `docs(<FEATURE_NAME>): 人のタスクの完了を記録`）。
 
 ### 中止
 
@@ -167,6 +180,8 @@ NEXT_STEP: S4
 | S8〜S11 の実装方針の分岐、ギャップの解消方針、レビュー指摘の対応方針 | 推奨案を採用する。仕様を変える場合は、コードだけでなく `spec.md`、`plan.md`、`tasks.md` にも反映する |
 | `LEFTOVER_CHANGES` | worktree の変更はこのフィーチャーの作業で生じたものなので、`--commit-leftovers` を付けて `finish` を再実行する。含めた変更の一覧を完了報告に挙げる |
 | `UNCHECKED_TASKS` | 未完了のタスクを S8 の手順で実装し、テストが通ったら `finish` を再実行する（`--allow-unchecked` は自動で付けない） |
+| S8 の `[人]` のタスク | 実行せず、`[x]` にもしない。手順を示して保留にし、依存しない後続のタスクを続ける。保留にしたタスクを完了報告に挙げる |
+| `HUMAN_TASKS_PENDING` | マージは済んでいる。残りの `[人]` のタスクを完了報告に挙げる（自動で完了にしない） |
 
 ### 自動モードでも止まる場面
 
@@ -198,6 +213,8 @@ NEXT_STEP: S4
 
 ユーザーからこのスキルを直接呼ばれたときは、引数に応じて次を行う。
 
-- `status`（または引数なし）: `$HELPER status` の結果を表示し、途中の worktree があれば再開に使うスキルを案内する。
+- `status`（または引数なし）: `$HELPER status` の結果を表示し、途中の worktree があれば再開に使うスキルを案内する。人の作業が残っているフィーチャーがあれば、`human-tasks` での確認を案内する。
+- `human-tasks [<feature>]`: 結果を表示する。
+- `sync-status <feature>`: §3「人のタスクの片付け」の手順に従う。
 - `next --phase <phase>`: 結果を表示する。
 - `abort <feature>`: §3「中止」の手順に従う。

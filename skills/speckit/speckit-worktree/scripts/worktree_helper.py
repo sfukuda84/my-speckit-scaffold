@@ -29,11 +29,14 @@ ORDER_LINE_RE = re.compile(r"\*\*\s*([0-9]+)\.\s*\[[^\]]*\]\(\./([^.)]+)\.md\)")
 TRAILER_RE = re.compile(r"^Speckit-Step:\s*(\S+)", re.MULTILINE)
 FEATURE_TRAILER_RE = re.compile(r"^Speckit-Feature:\s*(\S+)", re.MULTILINE)
 MERGE_SUBJECT_RE = re.compile(r"^merge\(([^)]+)\): (spec|coding|all)$", re.MULTILINE)
-UNCHECKED_RE = re.compile(r"^[ \t]*- \[ \]", re.MULTILINE)
+UNCHECKED_RE = re.compile(r"^[ \t]*- \[ \].*$", re.MULTILINE)
+# 人が行うタスクの印（steering の「人が行うタスク」）。未完了でも AI の実装漏れとして扱わない。
+HUMAN_MARKER = "[人]"
 COMMIT_SEP = "\x1e"
 # 機能ファイルの状態欄（speckit-concept-2-feature の様式）
 STATUS_SPECIFIED = "spec化済み（specs/{name}）"
 STATUS_DONE = "完了"
+STATUS_HUMAN_PENDING = "人の作業待ち（specs/{name}）"
 NEW_FEATURE_RE = re.compile(r"^[0-9]{3}-[a-z0-9][a-z0-9-]*$")
 
 REPO_ROOT: Path = Path()
@@ -174,10 +177,30 @@ def coding_done(name: str) -> bool:
     return "S11" in steps.get(name, frozenset()) or name in merged
 
 
-def unchecked_tasks(tasks_file: Path) -> int:
+def split_unchecked(text: str) -> tuple[list[str], list[str]]:
+    """未完了のタスク行を (AI のタスク, 人のタスク) に分けて返す。"""
+    ai: list[str] = []
+    human: list[str] = []
+    for line in UNCHECKED_RE.findall(text):
+        (human if HUMAN_MARKER in line else ai).append(line.strip())
+    return ai, human
+
+
+def unchecked_tasks(tasks_file: Path) -> tuple[list[str], list[str]]:
     if not tasks_file.is_file():
-        return 0
-    return len(UNCHECKED_RE.findall(tasks_file.read_text(encoding="utf-8")))
+        return [], []
+    return split_unchecked(tasks_file.read_text(encoding="utf-8"))
+
+
+def main_tasks_text(name: str) -> str:
+    proc = run_git(["show", f"{MAIN_BRANCH}:specs/{name}/tasks.md"], check=False)
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def status_after_coding(name: str, tasks_file: Path) -> str:
+    """実装を終えた後の状態。人のタスクが残っていれば 人の作業待ち、なければ 完了。"""
+    _, human = unchecked_tasks(tasks_file)
+    return STATUS_HUMAN_PENDING.format(name=name) if human else STATUS_DONE
 
 
 def completed_steps(name: str) -> list[str]:
@@ -482,12 +505,13 @@ def cmd_checkpoint(args: list[str]) -> None:
     if current != branch_of(name):
         raise HelperError(f"{wt} のブランチが '{current}' です。")
 
-    # 機能ファイルの状態欄を進める（仕様を作ったら spec化済み、実装を終えたら 完了）
+    # 機能ファイルの状態欄を進める（仕様を作ったら spec化済み、実装を終えたら 完了。人のタスクが残れば 人の作業待ち）
     if step == "S2":
         for path in update_feature_status(wt, name, STATUS_SPECIFIED.format(name=name), only_from=("未着手",)):
             info(f"==> 状態を更新しました: {path}")
     elif step == "S11":
-        for path in update_feature_status(wt, name, STATUS_DONE):
+        status = status_after_coding(name, wt / "specs" / name / "tasks.md")
+        for path in update_feature_status(wt, name, status):
             info(f"==> 状態を更新しました: {path}")
 
     stage_all(wt)
@@ -519,13 +543,15 @@ def cmd_finish(args: list[str]) -> None:
     for filename in ("spec.md", "plan.md", "tasks.md"):
         if not (wt / "specs" / name / filename).is_file():
             raise HelperError(f"{wt / 'specs' / name / filename} がありません。")
-    if phase in ("coding", "all") and "--allow-unchecked" not in flags:
-        remaining = unchecked_tasks(wt / "specs" / name / "tasks.md")
-        if remaining:
+    human_pending: list[str] = []
+    if phase in ("coding", "all"):
+        remaining, human_pending = unchecked_tasks(wt / "specs" / name / "tasks.md")
+        if remaining and "--allow-unchecked" not in flags:
             raise Precondition(
                 "UNCHECKED_TASKS",
-                f"{name} の tasks.md に未完了のタスクが {remaining} 件あります。一覧をユーザーに示し、"
-                "残したままマージしてよいと確認できたら --allow-unchecked を付けて再実行してください。",
+                f"{name} の tasks.md に未完了のタスク（{HUMAN_MARKER} 以外）が {len(remaining)} 件あります。"
+                "一覧をユーザーに示し、残したままマージしてよいと確認できたら --allow-unchecked を付けて再実行してください。\n"
+                + "\n".join(remaining),
             )
 
     stage_all(wt)
@@ -590,6 +616,11 @@ def cmd_finish(args: list[str]) -> None:
     if ignored:
         print(f"REMOVED_IGNORED: {' '.join(ignored)}")
     print(f"MERGE_COMMIT: {git_out(['rev-parse', '--short', 'HEAD'])}")
+    if human_pending:
+        # 人のタスクだけが残っているときは止めずにマージし、残りを知らせる。
+        print(f"HUMAN_TASKS_PENDING: {len(human_pending)}")
+        for line in human_pending:
+            print(f"  {line}")
 
 
 def cmd_abort(args: list[str]) -> None:
@@ -613,9 +644,22 @@ def cmd_abort(args: list[str]) -> None:
     print(f"ABORTED: {name}")
 
 
+def human_pending_of(name: str) -> list[str]:
+    """残っている人のタスク。worktree があればその tasks.md、なければ main の tasks.md を読む。
+
+    メインの作業ツリーが main にいるときは、コミット前の変更も含めて作業ツリーのファイルを読む。
+    """
+    tasks_file = worktree_of(name) / "specs" / name / "tasks.md"
+    if tasks_file.is_file():
+        return unchecked_tasks(tasks_file)[1]
+    if git_out(["rev-parse", "--abbrev-ref", "HEAD"]) == MAIN_BRANCH:
+        return unchecked_tasks(REPO_ROOT / "specs" / name / "tasks.md")[1]
+    return split_unchecked(main_tasks_text(name))[1]
+
+
 def cmd_status(_: list[str]) -> None:
-    print("| FEATURE | 仕様 | 実装 | WORKTREE |")
-    print("|---|---|---|---|")
+    print("| FEATURE | 仕様 | 実装 | WORKTREE | 人の作業 |")
+    print("|---|---|---|---|---|")
     for name in get_all_features():
         done = completed_steps(name)
         has_tasks = main_has_tasks(name)
@@ -636,7 +680,46 @@ def cmd_status(_: list[str]) -> None:
         else:
             coding_col = "-"
         wt_col = f"あり（次: {next_step(name, 'all')}）" if worktree_of(name).is_dir() else "-"
-        print(f"| {name} | {spec_col} | {coding_col} | {wt_col} |")
+        human = human_pending_of(name)
+        human_col = f"残り {len(human)} 件" if human else "-"
+        print(f"| {name} | {spec_col} | {coding_col} | {wt_col} | {human_col} |")
+
+
+def cmd_human_tasks(args: list[str]) -> None:
+    """残っている人のタスクを、フィーチャーごとに表示する。"""
+    positional, _, _ = parse_args(args)
+    names = [resolve_feature(positional)] if positional else get_all_features()
+    for name in names:
+        human = human_pending_of(name)
+        if human:
+            print(f"{name}:")
+            for line in human:
+                print(f"  {line}")
+
+
+def cmd_sync_status(args: list[str]) -> None:
+    """main にマージ済みのフィーチャーの状態欄を、main の tasks.md に合わせる（人のタスクを片付けた後に使う）。"""
+    positional, _, _ = parse_args(args)
+    name = resolve_feature(positional)
+    if worktree_of(name).is_dir():
+        raise HelperError(f"{name} の worktree があります。worktree の作業は checkpoint と finish で進めてください。")
+    if not coding_done(name):
+        raise HelperError(f"{name} は実装まで {MAIN_BRANCH} にマージされていません。")
+    current = git_out(["rev-parse", "--abbrev-ref", "HEAD"])
+    if current != MAIN_BRANCH:
+        raise HelperError(f"{REPO_ROOT} のブランチが {current} です。{MAIN_BRANCH} で実行してください。")
+    tasks_file = REPO_ROOT / "specs" / name / "tasks.md"
+    status = status_after_coding(name, tasks_file)
+    # 実装後の状態（完了 / 人の作業待ち）どうしでだけ動かし、それ以前の状態を飛び越えない。
+    changed = update_feature_status(REPO_ROOT, name, status, only_from=(STATUS_DONE, "人の作業待ち"))
+    for path in changed:
+        info(f"==> 状態を更新しました: {path}（コミットはしていません）")
+    print(f"FEATURE_STATUS: {status}")
+    human = unchecked_tasks(tasks_file)[1]
+    if human:
+        print(f"HUMAN_TASKS_PENDING: {len(human)}")
+        for line in human:
+            print(f"  {line}")
 
 
 def cmd_next(args: list[str]) -> None:
@@ -695,6 +778,7 @@ Commands:
   finish <feature> --phase spec|coding|all [--allow-unchecked] [--commit-leftovers] [--switch]
         最終ステップの完了を確認し、{MAIN_BRANCH} に --no-ff でマージして worktree とブランチを削除する。
         worktree の外で実行する。coding / all では tasks.md に未完了があると止まる（--allow-unchecked で続行）。
+        未完了が {HUMAN_MARKER} のタスクだけなら止めずにマージし、HUMAN_TASKS_PENDING で残りを表示する。
         どのステップにも含まれない変更があると止まる（--commit-leftovers で続行）。
         メインの作業ツリーが main 以外にいると止まる（--switch で main に切り替えて続行）
   abort <feature> [--yes]
@@ -702,7 +786,12 @@ Commands:
   list
         全フィーチャー名を着手順（spec_order.md の並び、その後に番号順）で表示する
   status
-        全フィーチャーの仕様・実装・worktree の状況を表示する
+        全フィーチャーの仕様・実装・worktree の状況と、残っている人のタスクの件数を表示する
+  human-tasks [<feature>]
+        残っている {HUMAN_MARKER} のタスクを表示する（worktree があればその tasks.md、なければ {MAIN_BRANCH} のもの）
+  sync-status <feature>
+        {MAIN_BRANCH} にマージ済みのフィーチャーの状態欄を tasks.md に合わせる（完了 / 人の作業待ち）。
+        人のタスクを片付けた後に {MAIN_BRANCH} で実行する。変更はコミットしない
   next --phase spec|coding|all [--skip <feature,...>]
         次に着手すべきフィーチャーを表示する（途中の worktree を優先。--skip で除外）
   resolve <query>
@@ -721,6 +810,8 @@ COMMANDS = {
     "abort": cmd_abort,
     "list": cmd_list,
     "status": cmd_status,
+    "human-tasks": cmd_human_tasks,
+    "sync-status": cmd_sync_status,
     "next": cmd_next,
     "resolve": cmd_resolve,
 }

@@ -25,7 +25,7 @@ REQUIRED_SECTIONS = [
     "## 根拠",
     "## /speckit-specify に渡す記述案",
 ]
-STATUS_RE = re.compile(r"^(未着手|実装済み（spec なし）|一部実装（spec なし）|spec化済み（specs/[^）]+）|完了)$")
+STATUS_RE = re.compile(r"^(未着手|実装済み（spec なし）|一部実装（spec なし）|spec化済み（specs/[^）]+）|人の作業待ち（specs/[^）]+）|完了)$")
 IMPLEMENTED_STATUSES = ("実装済み（spec なし）", "一部実装（spec なし）")
 CATEGORIES = ("MVP", "拡張")
 NONE_DEPS = {"—", "-", "なし", ""}
@@ -82,7 +82,7 @@ def parse_header(path: Path, text: str) -> dict | None:
     if any(k not in fields for k in ("状態", "区分", "想定順序", "依存")):
         return None
     if not STATUS_RE.match(fields["状態"]):
-        err(f"{path.name}: 状態「{fields['状態']}」は 未着手 / 実装済み（spec なし） / 一部実装（spec なし） / spec化済み（specs/…） / 完了 のいずれかにする")
+        err(f"{path.name}: 状態「{fields['状態']}」は 未着手 / 実装済み（spec なし） / 一部実装（spec なし） / spec化済み（specs/…） / 人の作業待ち（specs/…） / 完了 のいずれかにする")
     if fields["区分"] not in CATEGORIES:
         err(f"{path.name}: 区分「{fields['区分']}」は MVP / 拡張 のいずれかにする")
     if not fields["想定順序"].isdigit():

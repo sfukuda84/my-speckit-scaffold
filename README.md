@@ -162,7 +162,7 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 | `speckit-feature` | 仕様工程。specify → clarify ×2 → plan → tasks → analyze ×3 を行い、`main` にマージする |
 | `speckit-coding` | 実装工程。implement → converge → レビュー ×2 を行い、`main` にマージする |
 | `speckit-all` | 仕様工程と実装工程を 1 つの worktree で通して行い、最後に `main` にマージする |
-| `speckit-worktree` | 上の 3 スキルが使う worktree の管理と、共通の実行規則。進捗の確認（`status`）や中止（`abort`）にも使う |
+| `speckit-worktree` | 上の 3 スキルが使う worktree の管理と、共通の実行規則。進捗の確認（`status`）、残っている人のタスクの確認（`human-tasks`）、状態の同期（`sync-status`）、中止（`abort`）にも使う |
 | `speckit-review` | Standards 軸と Spec 軸の 2 軸でコード変更をレビューする |
 
 機能の番号のうち、`000` は共通基盤、`999` は運用基盤の予約番号である。コアドメインの機能は `001` から振る。
@@ -181,7 +181,7 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 
 ## worktree を使った実行（speckit-feature / speckit-coding / speckit-all）
 
-フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップが終わるたびにコミットする。コミットには trailer `Speckit-Step: <ステップ>` と `Speckit-Feature: <NNN-name>` を付けて進捗を記録する。着手順は `docs/feature/spec_order.md` の並びに従い、機能ファイルの状態欄は S2 で `spec化済み`、S11 で `完了` に自動で更新される。
+フィーチャーごとに `.worktrees/<NNN-name>`（ブランチ `feature/<NNN-name>`）で作業し、ステップが終わるたびにコミットする。コミットには trailer `Speckit-Step: <ステップ>` と `Speckit-Feature: <NNN-name>` を付けて進捗を記録する。着手順は `docs/feature/spec_order.md` の並びに従い、機能ファイルの状態欄は S2 で `spec化済み`、S11 で `完了`（`[人]` のタスクが残っていれば `人の作業待ち`）に自動で更新される。
 
 | ステップ | 内容 | 担当 |
 |---|---|---|
@@ -196,6 +196,7 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 - **引数**: 番号（`1`、`002`）、範囲（`002-005`）、`all`、省略（次の未着手）を受け付ける。複数を指定したときは 1 件ずつ直列に進める。
 - **自動モード（`--auto`）**: 質問せずに推奨案を採用して進める。自動で決めたことは `specs/<NNN-name>/auto-decisions.md` に記録する。マージの競合や中止などでは止まり、範囲指定ならその機能を飛ばして次に進む（詳細は `speckit-worktree` の §6）。
 - **片付け（S12）**: リポジトリのルートで実行する。実装工程では、`tasks.md` に未完了のタスクが残っているとマージの前に止まり、残してよいかを確認する。
+- **人が行うタスク（`[人]`）**: 契約や管理画面での操作など、AI が行えないタスクには `tasks.md` で `[人]` を付ける（規則は `.kiro/steering/spec-driven-development.md` の「人が行うタスク」）。AI は実行も完了の記録もしない。未完了のタスクが `[人]` だけなら片付け（S12）で止まらずにマージし、状態は `人の作業待ち` になる。残りは `main` で片付け、`sync-status` で `完了` にする。
 
 進捗の確認と中止は、ヘルパースクリプトでも行える（Windows で `python3` がない場合は `python` か `py -3`）。
 
@@ -203,6 +204,8 @@ steering のファイルを追加したときは、`CLAUDE.md`、`GEMINI.md`、`
 H=".claude/skills/speckit-worktree/scripts/worktree_helper.py"
 python3 $H status                 # 全フィーチャーの仕様・実装・worktree の状況
 python3 $H next --phase all       # 次に着手すべきフィーチャー
+python3 $H human-tasks            # 残っている人のタスク（[人]）
+python3 $H sync-status 002        # 人のタスクを片付けた後、main で状態を tasks.md に合わせる
 python3 $H abort 002              # 破棄する対象の確認（実際に破棄するには --yes）
 ```
 

@@ -179,11 +179,11 @@ python3 .claude/skills/speckit-worktree/scripts/worktree_helper.py status
 ```
 
 ```text
-| FEATURE | 仕様 | 実装 | WORKTREE |
-|---|---|---|---|
-| 000-app-basic | 完了 | 完了 | - |
-| 001-salon-setup | 完了（未マージ） | 作業中 | あり（次: S10） |
-| 002-customer-records | 未着手 | - | - |
+| FEATURE | 仕様 | 実装 | WORKTREE | 人の作業 |
+|---|---|---|---|---|
+| 000-app-basic | 完了 | 完了 | - | 残り 1 件 |
+| 001-salon-setup | 完了（未マージ） | 作業中 | あり（次: S10） | - |
+| 002-customer-records | 未着手 | - | - | - |
 ```
 
 作業中の機能をやめて捨てるときは、エージェントに「001 の作業を破棄して」と頼む（確認のうえで破棄される）。
@@ -194,11 +194,20 @@ python3 .claude/skills/speckit-worktree/scripts/worktree_helper.py status
 
 | 表示 | 意味 | どうするか |
 |---|---|---|
-| `UNCHECKED_TASKS` | `tasks.md` に終わっていないタスクがある | 実装するか、残したままマージするかを答える |
+| `UNCHECKED_TASKS` | `tasks.md` に終わっていないタスク（`[人]` 以外）がある | 実装するか、残したままマージするかを答える |
 | `LEFTOVER_CHANGES` | どのステップにも含まれない変更がある | マージに含めてよいかを答える |
 | `NOT_ON_MAIN` | 普段の作業ディレクトリが `main` 以外のブランチにいる | `main` に切り替えてよいかを答える |
 
 マージのときに、作業ディレクトリにあった `.env` などの無視対象のファイルも消える。消えるファイルは報告されるので、必要なら控えておく。
+
+### 人が行うタスク
+
+契約、支払い、アカウントの作成、秘密情報の入力、外部サービスの管理画面での操作、実機での確認など、AI が行えないタスクは、`tasks.md` で `[人]` が付く（例: `- [ ] T001 [US1] [人] 本番のドメインを取得する（完了の確かめ方: T002 が通る）`）。
+
+- AI は `[人]` のタスクを実行せず、手順を示して先に進む。自動モードでも、勝手に完了にはしない。
+- 終わっていないタスクが `[人]` だけなら、確認なしに `main` にマージする。機能の状態は `人の作業待ち` になり、残りのタスクが報告される。
+- 残りは「人の作業を一覧して」と頼むか、`worktree_helper.py human-tasks` で見られる。
+- 作業が終わったら、エージェントに「T001 が終わった」のように伝える。エージェントが確かめられる部分を確かめて `tasks.md` を完了にし、`sync-status` で状態を `完了` にする。
 
 ## 6. 事業計画（speckit-project）
 
@@ -466,5 +475,6 @@ new-speckit-project update                   # 取り込んで、1 つのコミ�
 | `/speckit-project` | 事業計画 |
 | `/speckit-presentation <internal \| investor \| customer>` | 企画書 |
 | `/speckit-worktree status` | 進捗の確認 |
+| `/speckit-worktree human-tasks` | 残っている人のタスクの確認 |
 | `/speckit-concept-2-feature --backlog` | 見送った候補（backlog）を機能にする |
 | `/speckit-architecture`、`/speckit-common-feature`、`/speckit-nfr-feature` | 立ち上げの各ステップを個別に見直す |

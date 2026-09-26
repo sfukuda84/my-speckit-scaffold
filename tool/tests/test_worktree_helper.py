@@ -277,6 +277,62 @@ class WorktreeHelperScenario(unittest.TestCase):
         self.checkpoints("1", "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3")
         self.assertIn("| 001-todo-cli | 完了（未マージ） | 未着手 |", self.out("status"))
 
+    def test_human_tasks_merge_and_sync_status(self) -> None:
+        """[人] のタスクだけが残っていれば止めずにマージし、状態は 人の作業待ち。片付けた後に sync-status で 完了 にする。"""
+        fdir = self.repo / "docs" / "feature"
+        (fdir / "001-todo-cli.md").write_text(
+            "# TODO\n\n**状態**: 未着手 | **区分**: MVP | **想定順序**: 1 | **依存**: —\n", encoding="utf-8")
+        (fdir / "README.md").write_text(
+            "| # | 機能 | 区分 | 状態 | 依存 | 一言 |\n|---|---|---|---|---|---|\n"
+            "| 1 | [TODO](./001-todo-cli.md) | MVP | 未着手 | — | a |\n", encoding="utf-8")
+        (fdir / "spec_order.md").write_text("- **1. [TODO](./001-todo-cli.md)**: a\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "feature files")
+        self.out("ensure", "1", "--phase", "all")
+        wt = self.repo / ".worktrees" / "001-todo-cli"
+        human = "- [ ] T002 [US1] [人] ドメインを取得する（完了の確かめ方: T003 が通る）"
+        self.spec_files(wt, "001-todo-cli", tasks=f"- [x] T001\n{human}\n- [ ] T003 [US1] 設定を確かめる\n")
+        self.checkpoints("1", "S2 S3 S4 S5 S6 S7-1 S7-2 S7-3 S8 S9 S10 S11")
+        self.assertIn("| 残り 1 件 |", self.out("status"))
+        self.assertIn("T002 [US1] [人]", self.out("human-tasks", "1"))
+        status = "人の作業待ち（specs/001-todo-cli）"
+        self.assertIn(f"**状態**: {status} |", (wt / "docs" / "feature" / "001-todo-cli.md").read_text(encoding="utf-8"))
+        # AI のタスクが残っていれば止まり、[人] のタスクは一覧に含めない
+        out = self.out("finish", "1", "--phase", "all")
+        self.assertIn("UNCHECKED_TASKS", out)
+        self.assertIn("T003", out)
+        self.assertNotIn("T002", out)
+        tasks = wt / "specs" / "001-todo-cli" / "tasks.md"
+        tasks.write_text(f"- [x] T001\n{human}\n- [x] T003 [US1] 設定を確かめる\n", encoding="utf-8")
+        self.checkpoints("1", "S11")
+        # [人] のタスクだけなら、--allow-unchecked なしでマージして残りを知らせる
+        out = self.out("finish", "1", "--phase", "all")
+        self.assertIn("FINISHED: 001-todo-cli (all)", out)
+        self.assertIn("HUMAN_TASKS_PENDING: 1", out)
+        self.assertIn("T002", out)
+        self.assertIn("| 001-todo-cli | 完了 | 完了 | - | 残り 1 件 |", self.out("status"))
+        # 片付ける前の sync-status は 人の作業待ち のまま
+        out = self.out("sync-status", "1")
+        self.assertIn(f"FEATURE_STATUS: {status}", out)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        # 人のタスクを片付けて sync-status すると 完了 になる（コミットはしない）
+        main_tasks = self.repo / "specs" / "001-todo-cli" / "tasks.md"
+        main_tasks.write_text(main_tasks.read_text(encoding="utf-8").replace("- [ ] T002", "- [x] T002"),
+                              encoding="utf-8")
+        out = self.out("sync-status", "1")
+        self.assertIn("FEATURE_STATUS: 完了", out)
+        self.assertNotIn("HUMAN_TASKS_PENDING", out)
+        self.assertIn("**状態**: 完了 |", (fdir / "001-todo-cli.md").read_text(encoding="utf-8"))
+        self.assertIn("| MVP | 完了 |", (fdir / "README.md").read_text(encoding="utf-8"))
+        self.assertIn("docs/feature/001-todo-cli.md", self.git("status", "--porcelain"))
+        self.assertEqual(self.out("human-tasks"), "")
+
+    def test_sync_status_guards(self) -> None:
+        """sync-status は、実装までマージ済みのフィーチャーに main でだけ使える。"""
+        self.assertIn("マージされていません", self.out("sync-status", "1"))
+        self.out("ensure", "1", "--phase", "all")
+        self.assertIn("worktree があります", self.out("sync-status", "1"))
+
     def test_gitignore_required(self) -> None:
         (self.repo / ".gitignore").write_text("", encoding="utf-8")
         self.git("commit", "-qam", "drop ignore")

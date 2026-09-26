@@ -7,7 +7,7 @@
 
 1. 着手する機能のファイルを読む
 2. 末尾の「`/speckit-specify` に渡す記述案」をそのまま、または調整して実行する（`speckit-feature` / `speckit-all` を使う場合は想定順序の番号を渡す）
-3. spec が作られたら、そのファイルの **状態** を `spec化済み（specs/NNN-<slug>）` に更新し、**下の一覧表の状態欄も同時に直す**（`speckit-feature` / `speckit-all` を使う場合は、S2 で `spec化済み`、S11 で `完了` に自動で更新される）
+3. spec が作られたら、そのファイルの **状態** を `spec化済み（specs/NNN-<slug>）` に更新し、**下の一覧表の状態欄も同時に直す**（`speckit-feature` / `speckit-all` を使う場合は、S2 で `spec化済み`、S11 で `完了`（`[人]` のタスクが残っていれば `人の作業待ち`）に自動で更新される。人のタスクを片付けた後は `speckit-worktree` の `sync-status` で `完了` にする）
 4. **以降その機能の正本は `specs/` 側。** このファイルは追記せず、素材・履歴として残す
 
 ## 運用ルール

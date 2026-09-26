@@ -48,6 +48,7 @@ $ARGUMENTS
 - 完了したフィーチャー名と番号、マージコミット
 - 仕様工程の要約（clarify で確定した決定事項、analyze の検証結果）
 - 実装工程の要約（実装内容、テスト結果、converge の結果、レビューで直した指摘）
+- 残っている `[人]` のタスク（`finish` の `HUMAN_TASKS_PENDING`）と、片付けた後の手順（`speckit-worktree` §3「人のタスクの片付け」）
 - 飛ばした、または中断したフィーチャーとその理由
 - `--auto` のとき: 自動で採用した判断の要約（`auto-decisions.md`）と、止まったフィーチャーについてユーザーに判断してほしい事項
 - 次の案内: `$HELPER next --phase all` の結果

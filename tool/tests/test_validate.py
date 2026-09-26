@@ -143,6 +143,25 @@ class ValidateReservedOrders(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("1 からの連番になっていない", proc.stdout)
 
+    def test_accepts_human_pending_status(self) -> None:
+        """人のタスクだけが残った機能の状態「人の作業待ち（specs/…）」を受け付ける。"""
+        d = build(self.tmp, [
+            ("000-app-basic", "アプリ基盤", "MVP", 0, "—"),
+            ("001-booking", "予約", "MVP", 1, "000-app-basic"),
+        ], ["000-app-basic", "001-booking"])
+        status = "人の作業待ち（specs/001-booking）"
+        for name in ("001-booking.md", "README.md"):
+            path = d / name
+            text = path.read_text(encoding="utf-8")
+            if name == "README.md":
+                text = text.replace("(./001-booking.md) | MVP | 未着手 |", f"(./001-booking.md) | MVP | {status} |")
+            else:
+                text = text.replace("**状態**: 未着手", f"**状態**: {status}")
+            path.write_text(text, encoding="utf-8")
+        proc = self.run_validate(d)
+        self.assertEqual(proc.returncode, 0, proc.stdout)
+        self.assertNotIn("状態「", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
